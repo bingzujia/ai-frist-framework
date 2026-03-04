@@ -1,0 +1,53 @@
+{
+  "name": "@ai-first/web",
+  "version": "0.1.0",
+  "description": "AI-First Framework - Spring Web MVC style HTTP decorators and Express adapter",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./express": {
+      "import": "./dist/adapters/express-adapter.js",
+      "types": "./dist/adapters/express-adapter.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@ai-first/di": "workspace:*",
+    "cors": "^2.8.5",
+    "reflect-metadata": "^0.2.1"
+  },
+  "peerDependencies": {
+    "express": ">=4.0.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.0",
+    "express": "^4.18.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "keywords": [
+    "ai-first",
+    "spring",
+    "mvc",
+    "rest",
+    "controller",
+    "decorator",
+    "express",
+    "typescript"
+  ]
+}
