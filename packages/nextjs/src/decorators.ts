@@ -1,6 +1,6 @@
 /**
- * Spring Boot Style API Decorators for Next.js
- * Web layer (MVC) - completely aligned with Spring Boot
+ * Spring Web MVC Style API Decorators
+ * Web layer (MVC) - completely aligned with Spring Boot / Spring Web MVC
  */
 import 'reflect-metadata';
 import { Injectable, Singleton, inject, injectAutowiredProperties } from '@ai-first/di/server';
@@ -11,6 +11,8 @@ const REQUEST_MAPPING_METADATA = Symbol('requestMapping');
 const PATH_VARIABLE_METADATA = Symbol('pathVariable');
 const REQUEST_PARAM_METADATA = Symbol('requestParam');
 const REQUEST_BODY_METADATA = Symbol('requestBody');
+export const RESPONSE_BODY_METADATA = Symbol('responseBody');
+export const RESPONSE_STATUS_METADATA = Symbol('responseStatus');
 
 /** 导出供 ApiContract 复用的元数据 key */
 export { CONTROLLER_METADATA, REQUEST_MAPPING_METADATA };
@@ -18,10 +20,10 @@ export { CONTROLLER_METADATA, REQUEST_MAPPING_METADATA };
 /**
  * HTTP Methods
  */
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
 
 /**
- * @RestController options (like Spring Boot @RestController + @RequestMapping)
+ * @Controller / @RestController options
  */
 export interface RestControllerOptions {
   /** Base path for all routes in this controller */
@@ -43,47 +45,83 @@ export interface RequestMappingOptions {
 }
 
 /**
+ * @RequestParam options
+ */
+export interface RequestParamOptions {
+  /** Query-string key name */
+  name?: string;
+  /** Whether the parameter is required */
+  required?: boolean;
+  /** Default value when not provided */
+  defaultValue?: string;
+}
+
+/** Internal helper to decorate a controller class with metadata and DI wiring */
+function decorateControllerClass<T extends { new (...args: any[]): any }>(
+  target: T,
+  options: RestControllerOptions,
+  isRestController: boolean,
+): T {
+  Reflect.defineMetadata(CONTROLLER_METADATA, {
+    ...options,
+    isRestController,
+    className: target.name,
+  }, target);
+
+  // Auto inject constructor dependencies
+  const paramTypes = Reflect.getMetadata('design:paramtypes', target) || [];
+  paramTypes.forEach((type: any, index: number) => {
+    inject(type)(target, undefined as any, index);
+  });
+
+  // Apply DI decorators
+  Injectable()(target);
+  Singleton()(target);
+
+  // 包装构造函数，支持 @Autowired 属性注入
+  const originalConstructor = target;
+  const newConstructor = function (this: any, ...args: any[]) {
+    const instance = new (originalConstructor as any)(...args);
+    injectAutowiredProperties(instance);
+    return instance;
+  } as unknown as T;
+
+  newConstructor.prototype = originalConstructor.prototype;
+  Object.setPrototypeOf(newConstructor, originalConstructor);
+
+  // 复制 metadata
+  const metadataKeys = Reflect.getMetadataKeys(originalConstructor);
+  metadataKeys.forEach(key => {
+    const value = Reflect.getMetadata(key, originalConstructor);
+    Reflect.defineMetadata(key, value, newConstructor);
+  });
+
+  return newConstructor;
+}
+
+/**
+ * @Controller - Mark a class as an MVC controller (like Spring @Controller).
+ * Use this when you need to return views or handle non-REST responses.
+ * For REST APIs returning JSON, prefer @RestController.
+ *
+ * @example
+ * @Controller({ path: '/pages' })
+ * export class PageController { … }
+ */
+export function Controller(options: RestControllerOptions = {}) {
+  return function <T extends { new (...args: any[]): any }>(target: T) {
+    return decorateControllerClass(target, options, false);
+  };
+}
+
+/**
  * @RestController - Mark a class as REST controller
  * Equivalent to Spring Boot: @RestController + @RequestMapping("/api/users")
  * Supports @Autowired property injection
  */
 export function RestController(options: RestControllerOptions = {}) {
   return function <T extends { new (...args: any[]): any }>(target: T) {
-    // Save controller metadata
-    Reflect.defineMetadata(CONTROLLER_METADATA, {
-      ...options,
-      className: target.name,
-    }, target);
-    
-    // Auto inject constructor dependencies
-    const paramTypes = Reflect.getMetadata('design:paramtypes', target) || [];
-    paramTypes.forEach((type: any, index: number) => {
-      inject(type)(target, undefined as any, index);
-    });
-    
-    // Apply DI decorators
-    Injectable()(target);
-    Singleton()(target);
-    
-    // 包装构造函数，支持 @Autowired 属性注入
-    const originalConstructor = target;
-    const newConstructor = function (this: any, ...args: any[]) {
-      const instance = new (originalConstructor as any)(...args);
-      injectAutowiredProperties(instance);
-      return instance;
-    } as unknown as T;
-    
-    newConstructor.prototype = originalConstructor.prototype;
-    Object.setPrototypeOf(newConstructor, originalConstructor);
-    
-    // 复制 metadata
-    const metadataKeys = Reflect.getMetadataKeys(originalConstructor);
-    metadataKeys.forEach(key => {
-      const value = Reflect.getMetadata(key, originalConstructor);
-      Reflect.defineMetadata(key, value, newConstructor);
-    });
-    
-    return newConstructor;
+    return decorateControllerClass(target, options, true);
   };
 }
 
@@ -135,6 +173,32 @@ export function RequestMapping(options: RequestMappingOptions) {
 }
 
 /**
+ * @ResponseBody - Mark a method's return value as the HTTP response body.
+ * Already implied on all methods of @RestController.
+ */
+export function ResponseBody() {
+  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+    Reflect.defineMetadata(RESPONSE_BODY_METADATA, true, target, propertyKey);
+    return descriptor;
+  };
+}
+
+/**
+ * @ResponseStatus - Set the HTTP status code for a method's response (like Spring @ResponseStatus).
+ *
+ * @example
+ * @PostMapping('/users')
+ * @ResponseStatus(201)
+ * async create(@RequestBody() dto: CreateUserDto) { … }
+ */
+export function ResponseStatus(status: number) {
+  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+    Reflect.defineMetadata(RESPONSE_STATUS_METADATA, status, target, propertyKey);
+    return descriptor;
+  };
+}
+
+/**
  * @PathVariable - Extract path variable (like Spring Boot @PathVariable)
  */
 export function PathVariable(name?: string) {
@@ -146,12 +210,29 @@ export function PathVariable(name?: string) {
 }
 
 /**
- * @RequestParam - Extract query parameter (like Spring Boot @RequestParam)
+ * @RequestParam - Extract query parameter (like Spring Boot @RequestParam).
+ * Accepts a name string, an options object, or nothing.
+ *
+ * @example
+ * async search(@RequestParam('keyword') keyword: string) { … }
+ * async search(@RequestParam({ name: 'keyword', required: true, defaultValue: '' }) keyword: string) { … }
  */
-export function RequestParam(name?: string, required: boolean = false) {
+export function RequestParam(nameOrOptions?: string | RequestParamOptions, required: boolean = false) {
   return function (target: any, propertyKey: string, parameterIndex: number) {
     const requestParams = Reflect.getMetadata(REQUEST_PARAM_METADATA, target, propertyKey) || {};
-    requestParams[parameterIndex] = { name: name || 'param' + parameterIndex, required };
+    if (typeof nameOrOptions === 'string' || nameOrOptions === undefined) {
+      requestParams[parameterIndex] = {
+        name: nameOrOptions || 'param' + parameterIndex,
+        required,
+        defaultValue: undefined,
+      };
+    } else {
+      requestParams[parameterIndex] = {
+        name: nameOrOptions.name || 'param' + parameterIndex,
+        required: nameOrOptions.required ?? false,
+        defaultValue: nameOrOptions.defaultValue,
+      };
+    }
     Reflect.defineMetadata(REQUEST_PARAM_METADATA, requestParams, target, propertyKey);
   };
 }
@@ -174,7 +255,7 @@ export function RequestBody() {
 
 // ==================== Metadata Getters ====================
 
-export function getControllerMetadata(target: any): RestControllerOptions | undefined {
+export function getControllerMetadata(target: any): (RestControllerOptions & { isRestController: boolean; className: string }) | undefined {
   return Reflect.getMetadata(CONTROLLER_METADATA, target);
 }
 
@@ -186,10 +267,14 @@ export function getPathVariables(target: any, methodName: string): Record<number
   return Reflect.getMetadata(PATH_VARIABLE_METADATA, target, methodName) || {};
 }
 
-export function getRequestParams(target: any, methodName: string): Record<number, { name: string; required: boolean }> {
+export function getRequestParams(target: any, methodName: string): Record<number, { name: string; required: boolean; defaultValue?: string }> {
   return Reflect.getMetadata(REQUEST_PARAM_METADATA, target, methodName) || {};
 }
 
 export function getRequestBody(target: any, methodName: string): Record<number, boolean> {
   return Reflect.getMetadata(REQUEST_BODY_METADATA, target, methodName) || {};
+}
+
+export function getResponseStatus(target: any, methodName: string): number | undefined {
+  return Reflect.getMetadata(RESPONSE_STATUS_METADATA, target, methodName);
 }

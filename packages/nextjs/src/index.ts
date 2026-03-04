@@ -1,10 +1,11 @@
 /**
  * @ai-first/nextjs
- * Spring Boot style HTTP decorators and Express router
+ * Spring Web MVC style HTTP decorators and Express router
  */
 
 // Export decorators
 export {
+  Controller,
   RestController,
   GetMapping,
   PostMapping,
@@ -16,18 +17,38 @@ export {
   RequestParam,
   QueryParam,
   RequestBody,
+  ResponseBody,
+  ResponseStatus,
   getControllerMetadata,
   getRequestMappings,
   getPathVariables,
   getRequestParams,
   getRequestBody,
+  getResponseStatus,
+  CONTROLLER_METADATA,
+  REQUEST_MAPPING_METADATA,
+  RESPONSE_BODY_METADATA,
+  RESPONSE_STATUS_METADATA,
   type RestControllerOptions,
   type RequestMappingOptions,
+  type RequestParamOptions,
   type HttpMethod,
 } from './decorators.js';
 
-// Export Express router
-export { createExpressRouter, type ExpressRouterOptions } from './express-router.js';
+// Export Express router, adapter types, and DispatcherRouter
+export {
+  createExpressRouter,
+  DispatcherRouter,
+  ExpressAdapter,
+  type IHttpAdapter,
+  type HttpRequest,
+  type HttpResponse,
+  type RouteHandler,
+  type NextFunction,
+  type ExpressRouterOptions,
+  type ExpressAdapterOptions,
+  type DispatcherRouterOptions,
+} from './express-router.js';
 
 // Export Bootstrap (Spring Boot style auto-configuration)
 export { createApp, type AppOptions, type DatabaseConnectionConfig } from './bootstrap.js';
