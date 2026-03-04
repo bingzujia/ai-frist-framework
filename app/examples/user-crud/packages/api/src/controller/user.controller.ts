@@ -10,6 +10,7 @@ import {
   DeleteMapping,
   PathVariable,
   RequestBody,
+  ResponseStatus,
 } from '@ai-first/nextjs';
 import { Autowired } from '@ai-first/di/server';
 import { User } from '../entity/user.entity.js';
@@ -32,6 +33,7 @@ export class UserController {
   }
 
   @PostMapping()
+  @ResponseStatus(201)
   async create(@RequestBody() dto: CreateUserDto): Promise<User> {
     return this.userService.createUser(dto);
   }

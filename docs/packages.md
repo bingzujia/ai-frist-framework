@@ -285,7 +285,7 @@ const { register, handleSubmit } = useForm({
 ## @ai-first/nextjs
 
 **路径：** `packages/nextjs/`  
-**描述：** Next.js Web 层适配器，提供 Spring Boot 风格的 REST API 装饰器，并自动生成 Next.js 路由文件。
+**描述：** Web 层框架，提供 Spring Boot 风格的 REST API 装饰器，适配 Express 服务和 Next.js 路由，并包含 Spring Boot 风格的自动配置 `createApp`。
 
 ### 导出入口
 
@@ -298,6 +298,7 @@ const { register, handleSubmit } = useForm({
 
 | 装饰器 | Spring Boot 对应 | 说明 |
 |--------|------------------|------|
+| `@Controller({ path })` | `@Controller + @RequestMapping` | 标记 MVC 控制器 |
 | `@RestController({ path })` | `@RestController + @RequestMapping` | 标记 REST 控制器 |
 | `@GetMapping(path?)` | `@GetMapping` | GET 路由 |
 | `@PostMapping(path?)` | `@PostMapping` | POST 路由 |
@@ -311,21 +312,30 @@ const { register, handleSubmit } = useForm({
 | 装饰器 | Spring Boot 对应 | 说明 |
 |--------|------------------|------|
 | `@PathVariable(name?)` | `@PathVariable` | 路径变量 |
-| `@RequestParam(name?, required?)` | `@RequestParam` | 查询参数 |
+| `@RequestParam(name?, required?)` | `@RequestParam` | 查询参数（支持 `RequestParamOptions`：`name`、`required`、`defaultValue`） |
 | `@QueryParam(name?)` | — | `@RequestParam` 的别名 |
 | `@RequestBody()` | `@RequestBody` | 请求体 |
+
+### 响应装饰器
+
+| 装饰器 | Spring Boot 对应 | 说明 |
+|--------|------------------|------|
+| `@ResponseBody()` | `@ResponseBody` | 标记方法返回值为响应体（`@RestController` 方法自动具备此语义） |
+| `@ResponseStatus(code)` | `@ResponseStatus` | 指定成功响应的 HTTP 状态码 |
 
 ### 使用示例
 
 ```typescript
 import {
   RestController, GetMapping, PostMapping, PutMapping, DeleteMapping,
-  PathVariable, RequestBody,
+  PathVariable, RequestBody, RequestParam, ResponseStatus,
 } from '@ai-first/nextjs';
+import { Autowired } from '@ai-first/di/server';
 
 @RestController({ path: '/users' })
 export class UserController {
-  constructor(private userService: UserService) {}
+  @Autowired()
+  private userService!: UserService;
 
   @GetMapping()
   async list() { return this.userService.getAllUsers(); }
@@ -336,6 +346,7 @@ export class UserController {
   }
 
   @PostMapping()
+  @ResponseStatus(201)
   async create(@RequestBody() dto: CreateUserDto) {
     return this.userService.createUser(dto);
   }
@@ -349,17 +360,85 @@ export class UserController {
   async delete(@PathVariable('id') id: string) {
     return this.userService.deleteUser(Number(id));
   }
+
+  @GetMapping('/search')
+  async search(@RequestParam({ name: 'keyword', defaultValue: '' }) keyword: string) {
+    return this.userService.searchUsers(keyword);
+  }
 }
 ```
 
-### 路由工具
+### Express 路由工具
+
+#### createExpressRouter（快速启动）
 
 ```typescript
-import { createApiRouter } from '@ai-first/nextjs';
+import express from 'express';
+import { createExpressRouter } from '@ai-first/nextjs';
+import * as controllers from './controller/index.js';
 
-// app/api/[...path]/route.ts（由 postinstall 自动生成）
-export const { GET, POST, PUT, DELETE, PATCH } = createApiRouter([UserController]);
+const app = express();
+app.use(express.json());
+app.use(createExpressRouter(controllers, { prefix: '/api' }));
+app.listen(3001);
 ```
+
+#### DispatcherRouter + ExpressAdapter（适配器模式）
+
+```typescript
+import express from 'express';
+import { DispatcherRouter, ExpressAdapter } from '@ai-first/nextjs';
+import * as controllers from './controller/index.js';
+
+const app = express();
+app.use(express.json());
+
+const dispatcher = new DispatcherRouter(new ExpressAdapter(), { prefix: '/api' });
+dispatcher.registerControllers(controllers);
+app.use(dispatcher.getNativeRouter() as any);
+app.listen(3001);
+```
+
+`IHttpAdapter` 接口允许替换底层 HTTP 框架（Express、Fastify、Hono 等）：
+
+```typescript
+import { IHttpAdapter, RouteHandler } from '@ai-first/nextjs';
+
+class FastifyAdapter implements IHttpAdapter {
+  register(method: string, path: string, handler: RouteHandler) { /* … */ }
+  getNativeRouter() { return this.fastifyInstance; }
+}
+```
+
+### createApp（Spring Boot 风格自动配置）
+
+`createApp` 自动扫描 `mapper/`、`service/`、`controller/` 目录，完成 DI 注册和路由挂载：
+
+```typescript
+import { createApp } from '@ai-first/nextjs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const app = await createApp({
+  srcDir: __dirname,
+  database: { type: 'sqlite', filename: join(__dirname, '../data/app.db') },
+  prefix: '/api',   // 默认 /api
+  cors: true,       // 默认 true
+  verbose: true,    // 默认 true
+});
+
+app.listen(3001, () => console.log('Server running on port 3001'));
+```
+
+| 选项 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `srcDir` | `string` | — | 源码目录（必填） |
+| `prefix` | `string` | `'/api'` | API 路径前缀 |
+| `database` | `DatabaseConnectionConfig` | — | 数据库配置（可选） |
+| `cors` | `boolean` | `true` | 是否启用 CORS |
+| `verbose` | `boolean` | `true` | 是否打印日志 |
 
 ### API 客户端（Feign 风格）
 
@@ -376,20 +455,13 @@ const userApi = createApiClient(UserApi);
 const users = await userApi.list();
 ```
 
-### postinstall 自动生成
-
-安装 `@ai-first/nextjs` 后自动扫描并生成路由：
-
-```
-pnpm install → scripts/postinstall.cjs → 生成 app/api/[...path]/route.ts
-```
-
 ### 依赖
 
 - `reflect-metadata ^0.2.1`
 - `@ai-first/core workspace:*`
 - `@ai-first/di workspace:*`
-- `next ^14.0.0 || ^15.0.0 || ^16.0.0`（peerDependency）
+- `express ^4.0.0`（peerDependency）
+- `next ^14.0.0 || ^15.0.0 || ^16.0.0`（可选 peerDependency）
 
 ---
 

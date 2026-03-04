@@ -35,45 +35,30 @@
 
 ```
 user-crud/
-├── src/
-│   ├── api/                          # 后端代码
-│   │   ├── controller/
-│   │   │   └── user.controller.ts    # REST 控制器
-│   │   ├── service/
-│   │   │   └── user.service.ts       # 业务逻辑
-│   │   ├── mapper/
-│   │   │   └── user.mapper.ts        # 数据访问
-│   │   ├── entity/
-│   │   │   └── user.entity.ts        # 数据库实体
-│   │   └── dto/
-│   │       └── user.dto.ts           # 数据传输对象
+├── packages/
+│   ├── api/                              # Express 后端
+│   │   └── src/
+│   │       ├── controller/
+│   │       │   └── user.controller.ts    # REST 控制器
+│   │       ├── service/
+│   │       │   └── user.service.ts       # 业务逻辑
+│   │       ├── mapper/
+│   │       │   └── user.mapper.ts        # 数据访问
+│   │       ├── entity/
+│   │       │   └── user.entity.ts        # 数据库实体
+│   │       ├── dto/
+│   │       │   └── user.dto.ts           # 数据传输对象
+│   │       └── server.ts                 # 应用入口（createApp）
 │   │
-│   ├── app/                          # Next.js 页面
-│   │   ├── layout.tsx
-│   │   ├── page.tsx                  # 主页面
-│   │   └── api/[...path]/
-│   │       └── route.ts              # ⚡ 自动生成
+│   ├── admin/                            # React 前端（Vite）
+│   │   └── src/
+│   │       ├── App.tsx
+│   │       └── main.tsx
 │   │
-│   ├── components/                   # React 组件
-│   │   ├── ui/                       # shadcn/ui 基础组件
-│   │   │   ├── button.tsx
-│   │   │   ├── card.tsx
-│   │   │   ├── dialog.tsx
-│   │   │   ├── form.tsx
-│   │   │   ├── input.tsx
-│   │   │   ├── label.tsx
-│   │   │   ├── table.tsx
-│   │   │   └── sonner.tsx
-│   │   ├── user-table.tsx            # 用户列表组件
-│   │   └── user-form.tsx             # 用户表单组件
-│   │
-│   └── lib/
-│       └── utils.ts                  # 工具函数
+│   └── mall-mobile/                      # Next.js 移动端
 │
-├── package.json
-├── next.config.ts
-├── tailwind.config.ts
-└── tsconfig.json
+├── pnpm-workspace.yaml
+└── package.json
 ```
 
 ### 核心代码示例
@@ -241,7 +226,7 @@ export class UserService {
 #### 5. Controller - REST 控制器
 
 ```typescript
-// src/api/controller/user.controller.ts
+// packages/api/src/controller/user.controller.ts
 import {
   RestController,
   GetMapping,
@@ -250,14 +235,17 @@ import {
   DeleteMapping,
   PathVariable,
   RequestBody,
+  ResponseStatus,
 } from '@ai-first/nextjs';
-import { User } from '../entity/user.entity';
-import { UserService } from '../service/user.service';
-import { CreateUserDto, UpdateUserDto } from '../dto/user.dto';
+import { Autowired } from '@ai-first/di/server';
+import { User } from '../entity/user.entity.js';
+import { UserService } from '../service/user.service.js';
+import { CreateUserDto, UpdateUserDto } from '../dto/user.dto.js';
 
 @RestController({ path: '/users' })
 export class UserController {
-  constructor(private userService: UserService) {}
+  @Autowired()
+  private userService!: UserService;
 
   @GetMapping()
   async list(): Promise<User[]> {
@@ -270,6 +258,7 @@ export class UserController {
   }
 
   @PostMapping()
+  @ResponseStatus(201)
   async create(@RequestBody() dto: CreateUserDto): Promise<User> {
     return this.userService.createUser(dto);
   }
@@ -290,6 +279,32 @@ export class UserController {
 }
 ```
 
+#### 6. Server - 应用入口
+
+`createApp` 自动扫描 `mapper/`、`service/`、`controller/` 目录并完成注册：
+
+```typescript
+// packages/api/src/server.ts
+import { createApp } from '@ai-first/nextjs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const app = await createApp({
+  srcDir: __dirname,
+  database: {
+    type: 'sqlite',
+    filename: join(__dirname, '../data/app.db'),
+  },
+});
+
+app.listen(3001, () => {
+  console.log('🚀 API Server running at http://localhost:3001');
+  console.log('📚 API: http://localhost:3001/api/users');
+});
+```
+
 ### API 接口
 
 | 方法 | 路径 | 描述 |
@@ -304,15 +319,19 @@ export class UserController {
 
 ```bash
 # 1. 进入示例目录
-cd examples/user-crud
+cd app/examples/user-crud
 
-# 2. 安装依赖（自动生成 route.ts）
+# 2. 安装依赖
 pnpm install
 
-# 3. 启动开发服务器
-pnpm dev
+# 3. 启动 API 服务（Express，端口 3001）
+cd packages/api && pnpm dev
 
-# 4. 访问 http://localhost:3000
+# 4. 启动管理后台（React + Vite，端口 5173，另开终端）
+cd packages/admin && pnpm dev
+
+# 5. 访问 API: http://localhost:3001/api/users
+#    访问前端: http://localhost:5173
 ```
 
 ### 依赖说明
