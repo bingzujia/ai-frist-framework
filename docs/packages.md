@@ -429,7 +429,7 @@ const app = await createApp({
   verbose: true,    // 默认 true
 });
 
-app.listen(3001, () => console.log('Server running on port 3001'));
+app.listen(3001, () => console.log('服务已启动，端口：3001'));
 ```
 
 | 选项 | 类型 | 默认值 | 说明 |

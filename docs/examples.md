@@ -300,8 +300,8 @@ const app = await createApp({
 });
 
 app.listen(3001, () => {
-  console.log('🚀 API Server running at http://localhost:3001');
-  console.log('📚 API: http://localhost:3001/api/users');
+  console.log('🚀 API 服务已启动：http://localhost:3001');
+  console.log('📚 接口地址：http://localhost:3001/api/users');
 });
 ```
 
