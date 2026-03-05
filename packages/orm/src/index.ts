@@ -54,7 +54,7 @@ export {
 } from './wrapper.js';
 
 // Adapters
-export { KyselyAdapter, type KyselyAdapterOptions } from './adapters/index.js';
+export { KyselyAdapter, type KyselyAdapterOptions, InMemoryAdapter } from './adapters/index.js';
 
 // Database Factory (多数据库支持)
 export {

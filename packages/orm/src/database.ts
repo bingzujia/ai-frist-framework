@@ -73,7 +73,7 @@ export async function createKyselyDatabase(config: DatabaseConnectionConfig): Pr
     }
     
     case 'mysql': {
-      const mysql = await import('mysql2');
+      const mysql = await import("mysql2/promise");
       const pool = mysql.createPool({
         host: config.host,
         port: config.port,

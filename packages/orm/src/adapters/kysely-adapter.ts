@@ -260,8 +260,17 @@ export class KyselyAdapter<T extends { id?: number | string }> implements IMappe
           break;
           
         case 'between':
-          q = q.where(this.toColumn(condition.column!), '>=', condition.values![0])
-               .where(this.toColumn(condition.column!), '<=', condition.values![1]);
+          if (condition.operator === 'not between') {
+            q = q.where((eb: any) =>
+              eb.or([
+                eb(this.toColumn(condition.column!), '<', condition.values![0]),
+                eb(this.toColumn(condition.column!), '>', condition.values![1]),
+              ])
+            );
+          } else {
+            q = q.where(this.toColumn(condition.column!), '>=', condition.values![0])
+                 .where(this.toColumn(condition.column!), '<=', condition.values![1]);
+          }
           break;
           
         case 'in':
@@ -307,6 +316,12 @@ export class KyselyAdapter<T extends { id?: number | string }> implements IMappe
       case 'compare':
         return eb(this.toColumn(condition.column!), condition.operator!, condition.value);
       case 'between':
+        if (condition.operator === 'not between') {
+          return eb.or([
+            eb(this.toColumn(condition.column!), '<', condition.values![0]),
+            eb(this.toColumn(condition.column!), '>', condition.values![1]),
+          ]);
+        }
         return eb.and([
           eb(this.toColumn(condition.column!), '>=', condition.values![0]),
           eb(this.toColumn(condition.column!), '<=', condition.values![1]),

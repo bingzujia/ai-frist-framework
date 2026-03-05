@@ -30,6 +30,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/pg": "^8.11.0",
+    "mysql2": "^3.18.2",
     "pg": "^8.13.0",
     "tsup": "^8.0.0",
     "typescript": "^5.3.0"

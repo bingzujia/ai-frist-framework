@@ -23,7 +23,7 @@
  * ```
  */
 
-export type CompareOperator = '=' | '!=' | '>' | '>=' | '<' | '<=' | 'like' | 'not like' | 'in' | 'not in' | 'between' | 'is null' | 'is not null';
+export type CompareOperator = '=' | '!=' | '>' | '>=' | '<' | '<=' | 'like' | 'not like' | 'in' | 'not in' | 'between' | 'not between' | 'is null' | 'is not null';
 
 export interface Condition {
   type: 'compare' | 'between' | 'in' | 'null' | 'or' | 'and' | 'nested';
@@ -164,7 +164,7 @@ export class QueryWrapper<T = any> {
    * @example wrapper.notBetween('age', 18, 30)
    */
   notBetween(column: keyof T & string, value1: unknown, value2: unknown): this {
-    this.conditions.push({ type: 'between', column, operator: 'not like', values: [value1, value2] });
+    this.conditions.push({ type: 'between', column, operator: 'not between', values: [value1, value2] });
     return this;
   }
 
