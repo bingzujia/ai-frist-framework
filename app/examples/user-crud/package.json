@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "pnpm --filter '@ai-first/*' run build",
     "dev": "pnpm -r --parallel dev",
     "dev:api": "pnpm -F @user-crud/api dev",
     "dev:admin": "pnpm -F @user-crud/admin dev",
