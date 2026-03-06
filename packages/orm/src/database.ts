@@ -73,7 +73,8 @@ export async function createKyselyDatabase(config: DatabaseConnectionConfig): Pr
     }
     
     case 'mysql': {
-      const mysql = await import('mysql2');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mysql = await import('mysql2' as any);
       const pool = mysql.createPool({
         host: config.host,
         port: config.port,
