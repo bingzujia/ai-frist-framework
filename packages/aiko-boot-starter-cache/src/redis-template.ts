@@ -37,6 +37,10 @@ import type { ZSetOperations } from './operations/zset-operations.js';
 
 export interface RedisTemplateOptions<K, V> extends IORedisAdapterOptions<K, V> {}
 
+export interface StringRedisTemplateOptions {
+  client: Redis;
+}
+
 /**
  * RedisTemplate<K, V> - Spring Boot 风格的 Redis 操作模板
  *
@@ -63,8 +67,13 @@ export class RedisTemplate<K = string, V = unknown> {
    * 删除 key（支持单个或批量）
    * 对应 Spring: delete(K key) / delete(Collection<K> keys)
    */
-  async delete(key: K | K[]): Promise<number> {
-    return this.adapter.delete(key);
+  async delete(key: K): Promise<number>;
+  async delete(key: K[]): Promise<number>;
+  async delete(key: unknown): Promise<number> {
+    if (Array.isArray(key)) {
+      return this.adapter.delete(key as K[]);
+    }
+    return this.adapter.delete(key as K);
   }
 
   /**
@@ -169,7 +178,7 @@ export class RedisTemplate<K = string, V = unknown> {
    * 获取底层 ioredis 客户端（用于执行原生命令）
    */
   getNativeClient(): Redis {
-    return this.adapter['client'] as Redis;
+    return this.adapter['client'];
   }
 }
 
@@ -189,7 +198,7 @@ export class RedisTemplate<K = string, V = unknown> {
  * ```
  */
 export class StringRedisTemplate extends RedisTemplate<string, string> {
-  constructor(options: { client: Redis }) {
+  constructor(options: StringRedisTemplateOptions) {
     const stringSerializer: RedisSerializer<string> = {
       serialize: (v) => v,
       deserialize: (s) => s,

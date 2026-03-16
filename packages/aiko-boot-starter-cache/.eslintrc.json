@@ -1,0 +1,9 @@
+{
+  "parserOptions": {
+    "project": "./tsconfig.json"
+  },
+  "extends": [
+    "plugin:@typescript-eslint/recommended-requiring-type-checking",
+    "plugin:@ai-partner-x/aiko-boot/java-compat"
+  ]
+}

@@ -59,8 +59,17 @@ export const CACHE_EVICT_METADATA = Symbol('cacheEvict');
 
 // ==================== Types ====================
 
-/** 缓存 key 生成函数，接收方法参数，返回缓存 key 字符串（支持异步） */
-export type CacheKeyGenerator = (...args: unknown[]) => string | Promise<string>;
+/** 缓存 key 生成函数，接收方法参数，返回缓存 key 字符串（支持同步/异步） */
+export interface CacheKeyGenerator {
+  (...args: unknown[]): string;
+  (...args: unknown[]): Promise<string>;
+}
+
+/** 缓存条件函数，返回是否启用缓存（支持同步/异步） */
+export interface CacheCondition {
+  (...args: unknown[]): boolean;
+  (...args: unknown[]): Promise<boolean>;
+}
 
 /** @Cacheable / @CachePut 选项 */
 export interface CacheableOptions {
@@ -87,7 +96,7 @@ export interface CacheableOptions {
    * 缓存条件（接收方法参数，支持异步），返回 false 时不缓存
    * 对应 Spring: @Cacheable(condition = "#id > 0")
    */
-  condition?: (...args: unknown[]) => boolean | Promise<boolean>;
+  condition?: CacheCondition;
 }
 
 /** @CacheEvict 选项 */
@@ -122,7 +131,7 @@ export interface CacheEvictOptions {
  */
 async function buildEntryKey(args: unknown[], keyGenerator?: CacheKeyGenerator): Promise<string> {
   if (keyGenerator) {
-    return await keyGenerator(...args);
+    return Promise.resolve(keyGenerator(...args));
   }
   return args
     .map(a => {
@@ -146,7 +155,7 @@ async function buildEntryKey(args: unknown[], keyGenerator?: CacheKeyGenerator):
  * @param methodPrototype - 被装饰方法所在类的原型对象
  */
 function autoMarkCacheComponent(methodPrototype: object): void {
-  const ctor = (methodPrototype as { constructor: Function }).constructor;
+  const ctor = (methodPrototype as { constructor: { name: string } }).constructor;
   if (!Reflect.hasMetadata(CACHE_COMPONENT_METADATA, ctor)) {
     Reflect.defineMetadata(CACHE_COMPONENT_METADATA, { className: ctor.name }, ctor);
   }
@@ -171,7 +180,7 @@ function autoMarkCacheComponent(methodPrototype: object): void {
 export function Cacheable(options: CacheableOptions) {
   return function (
     methodPrototype: object,
-    _propertyKey: string | symbol,
+    _propertyKey: PropertyKey,
     descriptor: PropertyDescriptor,
   ): PropertyDescriptor {
     autoMarkCacheComponent(methodPrototype);
@@ -184,7 +193,7 @@ export function Cacheable(options: CacheableOptions) {
         return originalMethod.apply(this, args);
       }
 
-      if (options.condition && !(await options.condition(...args))) {
+      if (options.condition && !(await Promise.resolve(options.condition(...args)))) {
         return originalMethod.apply(this, args);
       }
 
@@ -231,7 +240,7 @@ export function Cacheable(options: CacheableOptions) {
 export function CachePut(options: CacheableOptions) {
   return function (
     methodPrototype: object,
-    _propertyKey: string | symbol,
+    _propertyKey: PropertyKey,
     descriptor: PropertyDescriptor,
   ): PropertyDescriptor {
     autoMarkCacheComponent(methodPrototype);
@@ -246,7 +255,7 @@ export function CachePut(options: CacheableOptions) {
         return result;
       }
 
-      if (options.condition && !(await options.condition(...args))) {
+      if (options.condition && !(await Promise.resolve(options.condition(...args)))) {
         return result;
       }
 
@@ -284,7 +293,7 @@ export function CachePut(options: CacheableOptions) {
 export function CacheEvict(options: CacheEvictOptions) {
   return function (
     methodPrototype: object,
-    _propertyKey: string | symbol,
+    _propertyKey: PropertyKey,
     descriptor: PropertyDescriptor,
   ): PropertyDescriptor {
     autoMarkCacheComponent(methodPrototype);
@@ -329,7 +338,7 @@ export function CacheEvict(options: CacheEvictOptions) {
  * 获取缓存组件元数据（由 @Cacheable/@CachePut/@CacheEvict 自动写入）
  */
 export function getCacheComponentMetadata(
-  target: Function,
+  target: object,
 ): { className: string } | undefined {
   return Reflect.getMetadata(CACHE_COMPONENT_METADATA, target) as
     | { className: string }

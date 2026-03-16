@@ -77,7 +77,9 @@ import type { RedisConfig } from '../config.js';
  * `type: 'redis'` 是必填的判别字段，后续属性直接继承自 RedisConfig
  * （standalone / sentinel / cluster 模式均通过 `mode` 字段区分）。
  */
-export type RedisCacheConfig = { type: 'redis' } & RedisConfig;
+export type RedisCacheConfig = {
+  type: 'redis';
+} & RedisConfig;
 
 // ==================== CacheConfig 联合类型 ====================
 
@@ -106,10 +108,9 @@ export type RedisCacheConfig = { type: 'redis' } & RedisConfig;
  * 2. 在 initializeCaching() 中添加对应 `case` 分支
  * 无需修改 @Cacheable / @CachePut / @CacheEvict 等业务注解。
  */
-export type CacheConfig =
-  | RedisCacheConfig;
-  // 未来在此处扩展更多后端 ↓
-  // | { type: 'simple' }
-  // | MemcachedCacheConfig
-  // | CaffeineCacheConfig
-  // | { type: 'custom' }
+export type CacheConfig = RedisCacheConfig;
+// 未来在此处扩展更多后端 ↓
+// | { type: 'simple' }
+// | MemcachedCacheConfig
+// | CaffeineCacheConfig
+// | { type: 'custom' }

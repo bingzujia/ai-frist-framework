@@ -24,7 +24,8 @@
 
 import type { CacheManager } from './spi/cache.js';
 
-let activeCacheManager: CacheManager | null = null;
+let activeCacheManager!: CacheManager;
+let hasActiveCacheManager = false;
 
 /**
  * 注册（激活）一个 CacheManager 实例。
@@ -38,13 +39,14 @@ let activeCacheManager: CacheManager | null = null;
  */
 export function setCacheManager(manager: CacheManager): void {
   activeCacheManager = manager;
+  hasActiveCacheManager = true;
 }
 
 /**
  * 获取当前激活的 CacheManager；未注册时返回 `null`。
  */
-export function getCacheManager(): CacheManager | null {
-  return activeCacheManager;
+export function getCacheManager(): CacheManager | undefined {
+  return hasActiveCacheManager ? activeCacheManager : undefined;
 }
 
 /**
@@ -53,12 +55,12 @@ export function getCacheManager(): CacheManager | null {
  * 装饰器用此方法决定是否跳过缓存逻辑（graceful degradation）。
  */
 export function isCacheManagerInitialized(): boolean {
-  return activeCacheManager !== null;
+  return hasActiveCacheManager;
 }
 
 /**
  * 清除当前激活的 CacheManager（测试或应用关闭时使用）。
  */
 export function clearCacheManager(): void {
-  activeCacheManager = null;
+  hasActiveCacheManager = false;
 }

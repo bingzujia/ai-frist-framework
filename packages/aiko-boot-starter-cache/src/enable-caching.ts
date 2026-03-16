@@ -48,7 +48,6 @@
 // which names an instance type rather than the constructor.
 type IoRedis = typeof import('ioredis');
 type RedisInstance = InstanceType<IoRedis['default']>;
-type ClusterInstance = InstanceType<IoRedis['Cluster']>;
 
 import type {
   RedisConfig,
@@ -105,10 +104,9 @@ export class CacheInitializationError extends Error {
 export async function initializeCaching(config: CacheConfig): Promise<void> {
   switch (config.type) {
     case 'redis': {
-      // Strip the `type` discriminant to get a plain RedisConfig.
-      // The extra `type` property is ignored by ioredis and our Redis helpers.
-      const { type: _cacheType, ...redisConfig } = config;
-      await initializeRedisCaching(redisConfig as RedisConfig);
+      // TypeScript 知道这是 RedisCacheConfig，需要提取 RedisConfig 部分
+      const redisConfig: RedisConfig = config;
+      await initializeRedisCaching(redisConfig);
       break;
     }
 
@@ -121,7 +119,7 @@ export async function initializeCaching(config: CacheConfig): Promise<void> {
 
     default: {
       throw new CacheInitializationError(
-        `[Aiko Boot Starter Cache] Unknown cache type: "${(config as { type: string }).type}". ` +
+        `[Aiko Boot Starter Cache] Unknown cache type: "${(config as any).type}". ` +
         `Supported types: 'redis'.`,
       );
     }
@@ -146,7 +144,7 @@ async function initializeRedisCaching(config: RedisConfig): Promise<void> {
   // at module load time, so consumers who only use cache decorators can import
   // the package without having ioredis installed.
   const [{ default: Redis }, { createRedisConnection }] = await Promise.all([
-    import('ioredis') as Promise<IoRedis>,
+    import('ioredis'),
     import('./config.js'),
   ]);
 
@@ -190,14 +188,14 @@ async function initializeRedisCaching(config: RedisConfig): Promise<void> {
  * - lazyConnect: true        — don't connect until first command
  * - connectTimeout: 5000     — abort if TCP handshake takes too long
  */
-function createValidationClient(Redis: IoRedis['default'], config: RedisConfig): RedisInstance | ClusterInstance {
+function createValidationClient(Redis: IoRedis['default'], config: RedisConfig): RedisInstance {
   if (config.mode === 'sentinel') {
     const c = config as RedisSentinelConfig;
     return new Redis({
       sentinels: c.sentinels,
       name: c.masterName,
       password: c.password,
-      db: c.database ?? 0,
+      db: c.database !== undefined ? c.database : 0,
       maxRetriesPerRequest: 0,
       retryStrategy: () => null,   // null = stop retrying (ioredis API)
       enableOfflineQueue: false,
@@ -215,19 +213,19 @@ function createValidationClient(Redis: IoRedis['default'], config: RedisConfig):
         maxRetriesPerRequest: 0,
         connectTimeout: 5000,
       },
-    }) as ClusterInstance;
+    }) as unknown as RedisInstance;
   }
 
   // Standalone (default)
   const c = config as RedisStandaloneConfig;
   return new Redis({
-    host: c.host ?? '127.0.0.1',
-    port: c.port ?? 6379,
+    host: c.host !== undefined ? c.host : '127.0.0.1',
+    port: c.port !== undefined ? c.port : 6379,
     password: c.password,
-    db: c.database ?? 0,
+    db: c.database !== undefined ? c.database : 0,
     tls: c.tls ? {} : undefined,
     lazyConnect: true,
-    connectTimeout: c.connectTimeout ?? 5000,
+    connectTimeout: c.connectTimeout !== undefined ? c.connectTimeout : 5000,
     maxRetriesPerRequest: 0,
     retryStrategy: () => null,   // null = stop retrying (ioredis API)
     enableOfflineQueue: false,
@@ -242,5 +240,7 @@ function describeRedisConfig(config: RedisConfig): string {
     return `cluster[${(config as RedisClusterConfig).nodes.map(n => `${n.host}:${n.port}`).join(',')}]`;
   }
   const c = config as RedisStandaloneConfig;
-  return `${c.host ?? '127.0.0.1'}:${c.port ?? 6379}`;
+  const host = c.host !== undefined ? c.host : '127.0.0.1';
+  const port = c.port !== undefined ? c.port : 6379;
+  return `${host}:${port}`;
 }

@@ -521,7 +521,7 @@ await setOps.remove('tags', 'nosql');
 | `move(key, value, destKey)` | 将成员从一个集合移动到另一个集合，返回是否移动成功 | `move(K key, V value, K destKey)` |
 | `members(key)` | 获取集合中所有成员 | `members(K key)` |
 | `isMember(key, value)` | 判断单个成员是否在集合中 | `isMember(K key, Object o)` |
-| `isMember(key, ...values)` | 判断多个成员是否在集合中，返回 Map | `isMember(K key, Object... objects)` |
+| `isMembers(key, ...values)` | 判断多个成员是否在集合中，返回 Map（AI-First 扩展） | `smismember`（ioredis 对应） |
 | `size(key)` | 获取集合成员数量 | `size(K key)` |
 | `randomMember(key)` | 随机获取一个成员（不移除） | `randomMember(K key)` |
 | `randomMembers(key, count)` | 随机获取多个成员（可重复，不移除） | `randomMembers(K key, long count)` |
@@ -892,18 +892,6 @@ interface CacheConfig {
 # ESLint 检查（在包目录下执行）
 cd packages/aiko-boot-starter-cache
 pnpm lint
-
-# 生成 Java 代码（在项目根目录或应用示例中执行）
-# 注意：需要在对应 package.json 中配置 java 脚本
-cd ../..
-pnpm java
-
-# 或者在具体的应用示例中生成
-cd app/examples/cache-crud
-pnpm java
-
-# 验证 Java 编译
-cd gen && mvn compile
 ```
 
 ---
@@ -957,18 +945,6 @@ cd gen && mvn compile
 # ESLint 检查（在包目录下执行）
 cd packages/aiko-boot-starter-cache
 pnpm lint
-
-# 生成 Java 代码（在项目根目录或应用示例中执行）
-# 注意：需要在对应 package.json 中配置 java 脚本
-cd ../../
-pnpm java
-
-# 或者在具体的应用示例中生成
-cd app/examples/cache-crud
-pnpm java
-
-# 验证 Java 编译
-cd gen && mvn compile
 ```
 
 ---

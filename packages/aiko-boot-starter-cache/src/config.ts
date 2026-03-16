@@ -6,7 +6,9 @@
 
 import Redis from 'ioredis';
 
-/** Redis 单机连接配置 */
+/**
+ * Redis 单机连接配置
+ */
 export interface RedisStandaloneConfig {
   mode?: 'standalone';
   /** Redis 主机名，默认 '127.0.0.1' */
@@ -50,8 +52,10 @@ export interface RedisClusterConfig {
 export type RedisConfig = RedisStandaloneConfig | RedisSentinelConfig | RedisClusterConfig;
 
 /** 全局 Redis 实例 */
-let globalRedisClient: Redis | null = null;
-let globalRedisConfig: RedisConfig | null = null;
+let globalRedisClient!: Redis;
+let hasGlobalRedisClient = false;
+let globalRedisConfig!: RedisConfig;
+let hasGlobalRedisConfig = false;
 
 /**
  * 创建 Redis 连接
@@ -70,14 +74,15 @@ let globalRedisConfig: RedisConfig | null = null;
 export function createRedisConnection(config: RedisConfig): Redis {
   globalRedisConfig = config;
 
-  if (config.mode === 'sentinel') {
+  // 使用类型守卫进行模式判断，避免类型断言
+  if (isSentinelConfig(config)) {
     globalRedisClient = new Redis({
       sentinels: config.sentinels,
       name: config.masterName,
       password: config.password,
-      db: config.database ?? 0,
+      db: config.database !== undefined ? config.database : 0,
     });
-  } else if (config.mode === 'cluster') {
+  } else if (isClusterConfig(config)) {
     // For cluster mode, use ioredis Cluster - return a compatible client
     const Cluster = Redis.Cluster;
     globalRedisClient = new Cluster(config.nodes, {
@@ -85,27 +90,39 @@ export function createRedisConnection(config: RedisConfig): Redis {
     }) as unknown as Redis;
   } else {
     // Standalone (default)
-    const standaloneConfig = config as RedisStandaloneConfig;
     globalRedisClient = new Redis({
-      host: standaloneConfig.host ?? '127.0.0.1',
-      port: standaloneConfig.port ?? 6379,
-      password: standaloneConfig.password,
-      db: standaloneConfig.database ?? 0,
-      connectTimeout: standaloneConfig.connectTimeout ?? 10000,
-      commandTimeout: standaloneConfig.commandTimeout,
-      tls: standaloneConfig.tls ? {} : undefined,
+      host: config.host !== undefined ? config.host : '127.0.0.1',
+      port: config.port !== undefined ? config.port : 6379,
+      password: config.password,
+      db: config.database !== undefined ? config.database : 0,
+      connectTimeout: config.connectTimeout !== undefined ? config.connectTimeout : 10000,
+      commandTimeout: config.commandTimeout,
+      tls: config.tls ? {} : undefined,
       lazyConnect: true,
     });
   }
 
+  hasGlobalRedisClient = true;
+  hasGlobalRedisConfig = true;
+
   return globalRedisClient;
+}
+
+/** 类型守卫：判断是否为 Sentinel 配置 */
+function isSentinelConfig(config: RedisConfig): config is RedisSentinelConfig {
+  return config.mode === 'sentinel';
+}
+
+/** 类型守卫：判断是否为 Cluster 配置 */
+function isClusterConfig(config: RedisConfig): config is RedisClusterConfig {
+  return config.mode === 'cluster';
 }
 
 /**
  * 获取全局 Redis 客户端
  */
 export function getRedisClient(): Redis {
-  if (!globalRedisClient) {
+  if (!hasGlobalRedisClient) {
     throw new Error('[AI-First Redis] Redis not initialized. Call createRedisConnection() first.');
   }
   return globalRedisClient;
@@ -115,7 +132,7 @@ export function getRedisClient(): Redis {
  * 获取 Redis 配置
  */
 export function getRedisConfig(): RedisConfig {
-  if (!globalRedisConfig) {
+  if (!hasGlobalRedisConfig) {
     throw new Error('[AI-First Redis] Redis not configured. Call createRedisConnection() first.');
   }
   return globalRedisConfig;
@@ -125,10 +142,10 @@ export function getRedisConfig(): RedisConfig {
  * 关闭 Redis 连接
  */
 export async function closeRedisConnection(): Promise<void> {
-  if (globalRedisClient) {
+  if (hasGlobalRedisClient) {
     await globalRedisClient.quit();
-    globalRedisClient = null;
-    globalRedisConfig = null;
+    hasGlobalRedisClient = false;
+    hasGlobalRedisConfig = false;
   }
 }
 
@@ -136,5 +153,5 @@ export async function closeRedisConnection(): Promise<void> {
  * 检查 Redis 是否已初始化
  */
 export function isRedisInitialized(): boolean {
-  return globalRedisClient !== null;
+  return hasGlobalRedisClient;
 }

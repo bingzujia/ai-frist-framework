@@ -57,8 +57,12 @@ export class IORedisAdapter<K = string, V = unknown> {
 
   constructor(options: IORedisAdapterOptions<K, V>) {
     this.client = options.client;
-    this.keySerializer = (options.keySerializer ?? stringSerializer) as RedisSerializer<K>;
-    this.valueSerializer = (options.valueSerializer ?? defaultSerializer<V>()) as RedisSerializer<V>;
+    this.keySerializer = options.keySerializer !== undefined
+      ? options.keySerializer
+      : (stringSerializer as unknown as RedisSerializer<K>);
+    this.valueSerializer = options.valueSerializer !== undefined
+      ? options.valueSerializer
+      : defaultSerializer<V>();
   }
 
   protected sk(key: K): string {
@@ -89,8 +93,10 @@ export class IORedisAdapter<K = string, V = unknown> {
     return (await this.client.exists(this.sk(key))) > 0;
   }
 
-  async delete(key: K | K[]): Promise<number> {
-    const keys = Array.isArray(key) ? key.map(k => this.sk(k)) : [this.sk(key)];
+  async delete(key: K): Promise<number>;
+  async delete(key: K[]): Promise<number>;
+  async delete(key: unknown): Promise<number> {
+    const keys = Array.isArray(key) ? key.map(k => this.sk(k as K)) : [this.sk(key as K)];
     if (keys.length === 0) return 0;
     return this.client.del(...keys);
   }
@@ -127,6 +133,7 @@ export class IORedisAdapter<K = string, V = unknown> {
   // ==================== Value Operations (opsForValue) ====================
 
   opsForValue(): ValueOperations<K, V> {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const adapter = this;
     return {
       async set(key: K, value: V, ttlSeconds?: number): Promise<void> {
@@ -217,25 +224,32 @@ export class IORedisAdapter<K = string, V = unknown> {
   // ==================== List Operations (opsForList) ====================
 
   opsForList(): ListOperations<K, V> {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const adapter = this;
 
     // Use function overloads so TypeScript can verify each overload without unsafe casts
     async function leftPop(key: K): Promise<V | null>;
     async function leftPop(key: K, count: number): Promise<V[]>;
-    async function leftPop(key: K, count?: number): Promise<V | null | V[]> {
+    async function leftPop(key: K, count?: number): Promise<unknown> {
       if (count !== undefined) {
         const raws = await adapter.client.lpop(adapter.sk(key), count);
-        return (raws ?? []).map((r: string) => adapter.ds(r));
+        if (raws === null) {
+          return [];
+        }
+        return raws.map((r: string) => adapter.ds(r));
       }
       return adapter.dv(await adapter.client.lpop(adapter.sk(key)));
     }
 
     async function rightPop(key: K): Promise<V | null>;
     async function rightPop(key: K, count: number): Promise<V[]>;
-    async function rightPop(key: K, count?: number): Promise<V | null | V[]> {
+    async function rightPop(key: K, count?: number): Promise<unknown> {
       if (count !== undefined) {
         const raws = await adapter.client.rpop(adapter.sk(key), count);
-        return (raws ?? []).map((r: string) => adapter.ds(r));
+        if (raws === null) {
+          return [];
+        }
+        return raws.map((r: string) => adapter.ds(r));
       }
       return adapter.dv(await adapter.client.rpop(adapter.sk(key)));
     }
@@ -303,6 +317,7 @@ export class IORedisAdapter<K = string, V = unknown> {
   // ==================== Hash Operations (opsForHash) ====================
 
   opsForHash<HK extends string = string, HV = unknown>(): HashOperations<K, HK, HV> {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const adapter = this;
     const hvSerializer: RedisSerializer<HV> = defaultSerializer<HV>();
 
@@ -379,25 +394,24 @@ export class IORedisAdapter<K = string, V = unknown> {
   // ==================== Set Operations (opsForSet) ====================
 
   opsForSet(): SetOperations<K, V> {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const adapter = this;
 
     // Use function overloads so TypeScript can verify each overload without unsafe casts
     async function pop(key: K): Promise<V | null>;
     async function pop(key: K, count: number): Promise<V[]>;
-    async function pop(key: K, count?: number): Promise<V | null | V[]> {
+    async function pop(key: K, count?: number): Promise<unknown> {
       if (count !== undefined) {
         const raws = await adapter.client.spop(adapter.sk(key), count);
-        return (raws ?? []).map((r: string) => adapter.ds(r));
+        if (raws === null) {
+          return [];
+        }
+        return raws.map((r: string) => adapter.ds(r));
       }
       return adapter.dv(await adapter.client.spop(adapter.sk(key)));
     }
 
-    async function isMember(key: K, value: V): Promise<boolean>;
-    async function isMember(key: K, ...values: [V, ...V[]]): Promise<boolean | Map<V, boolean>>;
-    async function isMember(key: K, ...values: V[]): Promise<boolean | Map<V, boolean>> {
-      if (values.length === 1) {
-        return (await adapter.client.sismember(adapter.sk(key), adapter.sv(values[0]))) === 1;
-      }
+    async function isMembers(key: K, ...values: V[]): Promise<Map<V, boolean>> {
       const results = await adapter.client.smismember(adapter.sk(key), ...values.map(v => adapter.sv(v)));
       const map = new Map<V, boolean>();
       values.forEach((v, i) => map.set(v, results[i] === 1));
@@ -424,7 +438,11 @@ export class IORedisAdapter<K = string, V = unknown> {
         return new Set(raws.map(r => adapter.ds(r)));
       },
 
-      isMember,
+      async isMember(key: K, value: V): Promise<boolean> {
+        return (await adapter.client.sismember(adapter.sk(key), adapter.sv(value))) === 1;
+      },
+
+      isMembers,
 
       async size(key: K): Promise<number> {
         return adapter.client.scard(adapter.sk(key));
@@ -438,14 +456,20 @@ export class IORedisAdapter<K = string, V = unknown> {
         if (!Number.isInteger(count) || count <= 0) throw new Error('count must be a positive integer');
         // Negative count allows duplicates in Redis SRANDMEMBER
         const raws = await adapter.client.srandmember(adapter.sk(key), -count);
-        return (raws ?? []).map((r: string) => adapter.ds(r));
+        if (raws === null) {
+          return [];
+        }
+        return raws.map((r: string) => adapter.ds(r));
       },
 
       async distinctRandomMembers(key: K, count: number): Promise<Set<V>> {
         if (!Number.isInteger(count) || count <= 0) throw new Error('count must be a positive integer');
         // Positive count returns distinct members in Redis SRANDMEMBER
         const raws = await adapter.client.srandmember(adapter.sk(key), count);
-        return new Set((raws ?? []).map((r: string) => adapter.ds(r)));
+        if (raws === null) {
+          return new Set<V>();
+        }
+        return new Set(raws.map((r: string) => adapter.ds(r)));
       },
 
       async intersect(key: K, ...otherKeys: K[]): Promise<Set<V>> {
@@ -480,6 +504,7 @@ export class IORedisAdapter<K = string, V = unknown> {
   // ==================== ZSet Operations (opsForZSet) ====================
 
   opsForZSet(): ZSetOperations<K, V> {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const adapter = this;
     return {
       async add(key: K, value: V, score: number): Promise<boolean> {
@@ -489,9 +514,9 @@ export class IORedisAdapter<K = string, V = unknown> {
       async addAll(key: K, tuples: TypedTuple<V>[]): Promise<number> {
         if (tuples.length === 0) return 0;
         // Build alternating score-member pairs (score1, member1, score2, member2, ...) for ioredis zadd
-        const scoreMembers: (string | number)[] = [];
-        for (const { value, score } of tuples) {
-          scoreMembers.push(score, adapter.sv(value));
+        const scoreMembers: string[] = [];
+        for (const tuple of tuples) {
+          scoreMembers.push(String(tuple.score), adapter.sv(tuple.value));
         }
         return adapter.client.zadd(adapter.sk(key), ...scoreMembers);
       },

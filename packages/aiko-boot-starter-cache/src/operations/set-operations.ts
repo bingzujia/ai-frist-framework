@@ -30,7 +30,6 @@ export interface SetOperations<K, V> {
    */
   pop(key: K): Promise<V | null>;
   pop(key: K, count: number): Promise<V[]>;
-  pop(key: K, count?: number): Promise<V | null | V[]>;
 
   /**
    * 将成员从一个集合移动到另一个集合，返回是否移动成功
@@ -49,7 +48,7 @@ export interface SetOperations<K, V> {
    * 对应 Spring: isMember(K key, Object o) / isMember(K key, Object... objects)
    */
   isMember(key: K, value: V): Promise<boolean>;
-  isMember(key: K, ...values: V[]): Promise<boolean | Map<V, boolean>>;
+  isMembers(key: K, ...values: V[]): Promise<Map<V, boolean>>;
 
   /**
    * 获取集合成员数量

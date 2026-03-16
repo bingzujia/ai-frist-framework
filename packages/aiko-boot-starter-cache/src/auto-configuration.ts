@@ -74,10 +74,10 @@ export class CacheProperties {
   strict?: boolean;
 
   /** 缓存后端类型，目前支持 'redis' */
-  type?: 'redis';
+  type?: string; // 'redis'
 
   /** Redis 连接模式: standalone（默认）| sentinel | cluster */
-  mode?: 'standalone' | 'sentinel' | 'cluster';
+  mode?: string; // 'standalone' | 'sentinel' | 'cluster'
 
   // ---- 单机 / 通用 ----
 
@@ -149,10 +149,10 @@ export class CacheAutoConfiguration {
       return;
     }
 
-    console.log(`🗄️  [aiko-cache] Initializing ${config.type} cache...`);
+    process.stdout.write(`🗄️  [aiko-cache] Initializing ${config.type} cache...\n`);
     try {
       await initializeCaching(config);
-      console.log(`✅ [aiko-cache] Cache initialized`);
+      process.stdout.write('✅ [aiko-cache] Cache initialized\n');
     } catch (error) {
       if (error instanceof CacheInitializationError) {
         throw error;
@@ -170,10 +170,10 @@ export class CacheAutoConfiguration {
   @OnApplicationShutdown({ order: 100 })
   async closeCache(): Promise<void> {
     if (isRedisInitialized()) {
-      console.log('🗄️  [aiko-cache] Closing cache connection...');
+      process.stdout.write('🗄️  [aiko-cache] Closing cache connection...\n');
       await closeRedisConnection();
       clearCacheManager();
-      console.log('✅ [aiko-cache] Cache disconnected');
+      process.stdout.write('✅ [aiko-cache] Cache disconnected\n');
     }
   }
 
@@ -191,7 +191,8 @@ export class CacheAutoConfiguration {
       if (mode === 'sentinel') {
         const masterName = ConfigLoader.get<string>('cache.masterName');
         const sentinels = ConfigLoader.get<{ host: string; port: number }[]>('cache.sentinels');
-        if (!masterName || !sentinels?.length) {
+        const hasSentinels = sentinels !== undefined && sentinels.length > 0;
+        if (!masterName || !hasSentinels) {
           const msg = '[aiko-cache] Sentinel mode requires masterName and sentinels';
           if (strict) throw new CacheInitializationError(msg);
           console.warn(msg);
@@ -209,7 +210,8 @@ export class CacheAutoConfiguration {
 
       if (mode === 'cluster') {
         const nodes = ConfigLoader.get<{ host: string; port: number }[]>('cache.nodes');
-        if (!nodes?.length) {
+        const hasNodes = nodes !== undefined && nodes.length > 0;
+        if (!hasNodes) {
           const msg = '[aiko-cache] Cluster mode requires nodes';
           if (strict) throw new CacheInitializationError(msg);
           console.warn(msg);

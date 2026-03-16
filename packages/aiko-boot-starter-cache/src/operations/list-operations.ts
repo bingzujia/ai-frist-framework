@@ -54,7 +54,6 @@ export interface ListOperations<K, V> {
    */
   leftPop(key: K): Promise<V | null>;
   leftPop(key: K, count: number): Promise<V[]>;
-  leftPop(key: K, count?: number): Promise<V | null | V[]>;
 
   /**
    * 从右侧弹出。不传 count 时返回单个元素或 null，传入 count 时返回数组。
@@ -62,7 +61,6 @@ export interface ListOperations<K, V> {
    */
   rightPop(key: K): Promise<V | null>;
   rightPop(key: K, count: number): Promise<V[]>;
-  rightPop(key: K, count?: number): Promise<V | null | V[]>;
 
   /**
    * 从一个列表右端弹出并推入另一个列表左端，返回弹出的元素
