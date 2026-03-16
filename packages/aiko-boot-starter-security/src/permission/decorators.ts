@@ -282,6 +282,14 @@ export function getButtonPermissionMetadata(target: any, propertyKey: string): P
   return Reflect.getMetadata(BUTTON_PERMISSION_METADATA, target, propertyKey);
 }
 
+export function getRolePermissionMetadata(target: any, propertyKey: string): PermissionDefinition | undefined {
+  return Reflect.getMetadata(ROLE_PERMISSION_METADATA, target, propertyKey);
+}
+
+export function getMenuPermissionMetadata(target: any, propertyKey: string): PermissionDefinition | undefined {
+  return Reflect.getMetadata(MENU_PERMISSION_METADATA, target, propertyKey);
+}
+
 /**
  * 获取所有权限定义（包括所有类型的权限装饰器）
  */

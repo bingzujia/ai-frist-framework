@@ -8,6 +8,8 @@ import {
   getApiPermissionMetadata,
   getMethodPermissionMetadata,
   getButtonPermissionMetadata,
+  getMenuPermissionMetadata,
+  getRolePermissionMetadata,
   type PermissionDefinition,
 } from '../permission/decorators.js';
 
