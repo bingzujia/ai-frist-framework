@@ -38,6 +38,7 @@
     }
   },
   "devDependencies": {
+    "@ai-partner-x/aiko-boot": "workspace:*",
     "@types/node": "^20.11.0",
     "ioredis": "^5.4.2",
     "tsup": "^8.0.0",
