@@ -462,7 +462,15 @@ function translatePropertyName(name: string): string {
  */
 function generateLiteral(expr: { value: string | number | boolean | null; literalType: string }): string {
   if (expr.literalType === 'string') {
-    return `"${expr.value}"`;
+    // Escape characters that are special inside Java string literals.
+    // Backslash must be escaped first so subsequent replacements don't double-escape it.
+    const escaped = String(expr.value)
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\r')
+      .replace(/\t/g, '\\t');
+    return `"${escaped}"`;
   }
   if (expr.literalType === 'null') {
     return 'null';
