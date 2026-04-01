@@ -567,6 +567,11 @@ function generateMethodCall(expr: ParsedMethodCall): string {
     if (expr.method === 'now' && obj === 'Date') {
       return 'System.currentTimeMillis()';
     }
+
+    // Handle console.log -> System.out.println
+    if (obj === 'console' && expr.method === 'log') {
+      return `System.out.println(${args})`;
+    }
     
     // Special handling for Date methods
     if (expr.method === 'toISOString' && isDateExpression(expr.object)) {
@@ -704,7 +709,7 @@ function generateBinaryExpression(expr: ParsedBinaryExpression): string {
   if (operator === '||') {
     // Deduplicate identical null checks that arise from `=== undefined || === null`
     // both becoming `== null`.  e.g. `x == null || x == null` -> `x == null`
-    if (left === right) {
+    if (left.trim() === right.trim()) {
       return left;
     }
     return `${left} || ${right}`;

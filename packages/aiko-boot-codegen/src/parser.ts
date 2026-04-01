@@ -661,9 +661,44 @@ function parseExpression(node: ts.Expression, sourceFile: ts.SourceFile): Parsed
           key: prop.name.text,
           value: parseExpression(prop.initializer, sourceFile),
         });
+      } else if (ts.isShorthandPropertyAssignment(prop)) {
+        // Shorthand property: { to, userId } → { to: to, userId: userId }
+        properties.push({
+          key: prop.name.text,
+          value: { type: 'identifier', name: prop.name.text },
+        });
       }
     }
     return { type: 'object', properties };
+  }
+  
+  // Template literal: `Hello ${name}, you are ${age}` → "Hello " + name + ", you are " + age
+  if (ts.isTemplateExpression(node)) {
+    const parts: ParsedExpression[] = [];
+    if (node.head.text) {
+      parts.push({ type: 'literal', value: node.head.text, literalType: 'string' });
+    }
+    for (const span of node.templateSpans) {
+      parts.push(parseExpression(span.expression, sourceFile));
+      if (span.literal.text) {
+        parts.push({ type: 'literal', value: span.literal.text, literalType: 'string' });
+      }
+    }
+    if (parts.length === 0) {
+      return { type: 'literal', value: '', literalType: 'string' };
+    }
+    // Chain parts together with + operator
+    return parts.reduce((left, right): ParsedExpression => ({
+      type: 'binary',
+      left,
+      operator: '+',
+      right,
+    }));
+  }
+
+  // No-substitution template literal: `hello` → "hello"
+  if (ts.isNoSubstitutionTemplateLiteral(node)) {
+    return { type: 'literal', value: node.text, literalType: 'string' };
   }
   
   // Array literal

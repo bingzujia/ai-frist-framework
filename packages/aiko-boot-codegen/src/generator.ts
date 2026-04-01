@@ -714,8 +714,10 @@ export function mapFieldType(field: { name: string; type: string; decorators: an
     const enumName = field.name.charAt(0).toUpperCase() + field.name.slice(1);
     if (!enumTypeUsages.has(tsType)) {
       const rawValues = parseStringLiteralUnion(tsType);
-      // Convert each literal to an uppercase Java constant (hyphens → underscores)
-      const values = rawValues.map(v => v.toUpperCase().replace(/-/g, '_'));
+      // Convert each literal to an uppercase Java enum constant.
+      // Replace hyphens, spaces, dots and any other non-alphanumeric characters
+      // with underscores so the result is a valid Java identifier.
+      const values = rawValues.map(v => v.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, ''));
       enumTypeUsages.set(tsType, { tsType, enumName, values });
     }
     return enumTypeUsages.get(tsType)!.enumName;
