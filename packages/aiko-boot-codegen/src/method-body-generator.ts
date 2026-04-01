@@ -14,9 +14,24 @@ import type {
 } from './types.js';
 
 /**
+ * Parameter names whose TS type is an inline object literal (e.g. `{ month: string }`).
+ * These are mapped to `Map<String, Object>` in Java and must use `.get("key")` access.
+ * Reset at the start of each call to generateMethodBody.
+ */
+let mapTypedParams: Set<string> = new Set();
+
+/**
  * Generate Java method body from parsed statements
  */
 export function generateMethodBody(method: ParsedMethod, indent: string = '        '): string[] {
+  // Identify parameters whose original TS type is an inline object literal.
+  // These become Map<String, Object> in Java, so property accesses must use .get("key").
+  mapTypedParams = new Set(
+    method.parameters
+      .filter(p => p.type.trimStart().startsWith('{') && p.type.trimEnd().endsWith('}'))
+      .map(p => p.name)
+  );
+
   const lines: string[] = [];
   
   if (!method.body || method.body.length === 0) {
@@ -254,11 +269,24 @@ function generateConditionExpression(expr: ParsedExpression): string {
   }
   
   // Handle negation: if (!user) -> if (user == null)
+  // Also handles optional chaining: if (!body?.month) -> if (body.get("month") == null)
   if (expr.type === 'raw' && typeof expr.code === 'string') {
     const code = expr.code.trim();
     if (code.startsWith('!') && !code.includes(' ')) {
-      const varName = code.slice(1);
-      return `${varName} == null`;
+      // Strip the leading `!` and remove optional chaining
+      const rawVarName = code.slice(1);
+      const cleanVar = rawVarName.replace(/\?\./g, '.');
+      // If it's a single-level property access on a Map-typed parameter,
+      // emit .get("key") instead of a getter: body?.month -> body.get("month")
+      const dotIdx = cleanVar.indexOf('.');
+      if (dotIdx !== -1) {
+        const objName = cleanVar.slice(0, dotIdx);
+        const propName = cleanVar.slice(dotIdx + 1);
+        if (mapTypedParams.has(objName)) {
+          return `${objName}.get("${propName}") == null`;
+        }
+      }
+      return `${cleanVar} == null`;
     }
   }
   
@@ -346,21 +374,28 @@ function generateExpression(expr: ParsedExpression): string {
 
 /**
  * Generate property access expression
- * In Java, private fields are accessed via getters
+ * In Java, private fields are accessed via getters.
+ * Parameters whose TS type was an inline object literal are Map<String, Object>
+ * and must use .get("key") instead of a getter method.
  */
 function generatePropertyAccess(expr: { object: ParsedExpression; property: string }): string {
   const obj = generateExpression(expr.object);
   const prop = expr.property;
   
+  // Check if object is 'this', it's internal field access - no getter needed
+  if (obj === 'this') {
+    return `this.${prop}`;
+  }
+  
+  // Check if this is a Map-typed parameter - use .get("key") instead of getter
+  if (expr.object.type === 'identifier' && mapTypedParams.has(expr.object.name)) {
+    return `${obj}.get("${prop}")`;
+  }
+
   // Special properties that don't need getter conversion
   const specialProps = ['length', 'size', 'success', 'errors', 'message'];
   if (specialProps.includes(prop)) {
     return `${obj}.${translatePropertyName(prop)}`;
-  }
-  
-  // Check if object is 'this', it's internal field access - no getter needed
-  if (obj === 'this') {
-    return `this.${prop}`;
   }
   
   // For other objects, convert to getter: obj.prop -> obj.getProp()
@@ -372,6 +407,9 @@ function generatePropertyAccess(expr: { object: ParsedExpression; property: stri
  * Clean raw code from TypeScript syntax
  */
 function cleanRawCode(code: string): string {
+  // Remove optional chaining: obj?.prop -> obj.prop
+  code = code.replace(/\?\./g, '.');
+
   // Remove type assertions: as unknown as Date, as any, etc.
   code = code.replace(/\s+as\s+\w+(\s+as\s+\w+)*/g, '');
   
@@ -454,6 +492,11 @@ function generateMethodCall(expr: ParsedMethodCall): string {
   
   if (expr.object) {
     const obj = generateExpression(expr.object);
+    
+    // Translate Date.now() -> System.currentTimeMillis()
+    if (expr.method === 'now' && obj === 'Date') {
+      return 'System.currentTimeMillis()';
+    }
     
     // Special handling for Date methods
     if (expr.method === 'toISOString' && isDateExpression(expr.object)) {

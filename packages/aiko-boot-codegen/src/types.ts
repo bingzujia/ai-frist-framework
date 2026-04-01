@@ -11,6 +11,7 @@ export const TYPE_MAPPING: Record<string, string> = {
   'boolean': 'Boolean',
   'Date': 'LocalDateTime',
   'any': 'Object',
+  'object': 'Object',
   'void': 'void',
   'null': 'null',
   'undefined': 'null',
