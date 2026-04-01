@@ -959,14 +959,23 @@ export function mapType(tsType: string): string {
   }
 
   // Handle Record<K, V> -> Map<K_java, V_java>
-  // Note: the regex `[^,]+` does not handle nested generics in the value type
-  // (e.g. Record<string, Map<string, number>>). Such cases are rare in typical
-  // Spring Boot entity code and are left as a known limitation.
-  const recordMatch = tsType.match(/^Record<([^,]+),\s*(.+)>$/);
-  if (recordMatch) {
-    const keyType = mapType(recordMatch[1].trim());
-    const valType = mapType(recordMatch[2].trim());
-    return `Map<${keyType}, ${valType}>`;
+  // Uses bracket-depth parsing so nested generics in the value type
+  // (e.g. Record<string, Map<string, number>>) are handled correctly.
+  if (tsType.startsWith('Record<') && tsType.endsWith('>')) {
+    const inner = tsType.slice(7, -1); // strip 'Record<' prefix and trailing '>'
+    let depth = 0;
+    let splitIdx = -1;
+    for (let i = 0; i < inner.length; i++) {
+      const ch = inner[i];
+      if (ch === '<' || ch === '(' || ch === '[') depth++;
+      else if (ch === '>' || ch === ')' || ch === ']') depth--;
+      else if (ch === ',' && depth === 0) { splitIdx = i; break; }
+    }
+    if (splitIdx !== -1) {
+      const keyType = mapType(inner.slice(0, splitIdx).trim());
+      const valType = mapType(inner.slice(splitIdx + 1).trim());
+      return `Map<${keyType}, ${valType}>`;
+    }
   }
 
   // Handle Omit, Pick, Partial generic types -> generate new class
