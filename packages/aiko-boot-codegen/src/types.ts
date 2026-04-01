@@ -267,6 +267,8 @@ export interface TranspilerOptions {
   springBootVersion?: string;
   /** Generate Lombok annotations */
   useLombok?: boolean;
+  /** When true, generate the @Service class as a ServiceImpl implementing a ServiceName interface */
+  generateAsServiceImpl?: boolean;
 }
 
 /**

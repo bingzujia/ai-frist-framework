@@ -106,14 +106,26 @@ describe('Integration Tests', () => {
       };
 
       const result = transpile(sourceCode, options);
-      expect(result.size).toBe(1);
+      expect(result.size).toBe(2);
       expect(result.has('UserService.java')).toBe(true);
+      expect(result.has('UserServiceImpl.java')).toBe(true);
 
-      const javaCode = result.get('UserService.java');
-      expect(javaCode).toContain('package com.example.service;');
+      // Interface
+      const iface = result.get('UserService.java');
+      expect(iface).toContain('package com.example.service;');
+      expect(iface).toContain('public interface UserService {');
+      expect(iface).toContain('User getUser(Long id);');
+      expect(iface).toContain('void createUser(User user);');
+      expect(iface).toContain('List<User> getAllUsers();');
+
+      // Implementation
+      const javaCode = result.get('UserServiceImpl.java');
+      expect(javaCode).toContain('package com.example.service.impl;');
       expect(javaCode).toContain('@Service');
       expect(javaCode).toContain('@Autowired');
       expect(javaCode).toContain('@Transactional');
+      expect(javaCode).toContain('@Override');
+      expect(javaCode).toContain('public class UserServiceImpl implements UserService {');
       expect(javaCode).toContain('private UserRepository userRepository;');
       expect(javaCode).toContain('public User getUser(Long id)');
       expect(javaCode).toContain('public void createUser(User user)');
@@ -483,12 +495,13 @@ describe('Integration Tests', () => {
 
       expect(entityResult.size).toBe(1);
       expect(repositoryResult.size).toBe(1);
-      expect(serviceResult.size).toBe(1);
+      expect(serviceResult.size).toBe(2);
       expect(controllerResult.size).toBe(1);
 
       expect(entityResult.has('Product.java')).toBe(true);
       expect(repositoryResult.has('ProductRepository.java')).toBe(true);
       expect(serviceResult.has('ProductService.java')).toBe(true);
+      expect(serviceResult.has('ProductServiceImpl.java')).toBe(true);
       expect(controllerResult.has('ProductController.java')).toBe(true);
 
       const entityJava = entityResult.get('Product.java');
@@ -506,9 +519,14 @@ describe('Integration Tests', () => {
 
       const serviceJava = serviceResult.get('ProductService.java');
       expect(serviceJava).toContain('package com.example.service;');
-      expect(serviceJava).toContain('@Service');
-      expect(serviceJava).toContain('@Autowired');
-      expect(serviceJava).toContain('@Transactional');
+      expect(serviceJava).toContain('public interface ProductService {');
+
+      const serviceImplJava = serviceResult.get('ProductServiceImpl.java');
+      expect(serviceImplJava).toContain('package com.example.service.impl;');
+      expect(serviceImplJava).toContain('@Service');
+      expect(serviceImplJava).toContain('@Autowired');
+      expect(serviceImplJava).toContain('@Transactional');
+      expect(serviceImplJava).toContain('public class ProductServiceImpl implements ProductService {');
 
       const controllerJava = controllerResult.get('ProductController.java');
       expect(controllerJava).toContain('package com.example.controller;');
@@ -663,7 +681,8 @@ describe('Integration Tests', () => {
       };
 
       const result = transpile(sourceCode, options);
-      const javaCode = result.get('UserService.java');
+      // Service classes now produce interface + Impl — check the Impl for Spring imports
+      const javaCode = result.get('UserServiceImpl.java');
 
       expect(javaCode).toContain('import org.springframework.stereotype.Service;');
       expect(javaCode).toContain('import org.springframework.beans.factory.annotation.Autowired;');

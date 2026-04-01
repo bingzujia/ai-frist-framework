@@ -8,6 +8,7 @@ export {
   generateJavaClass, 
   collectImportsFromParsed, 
   generateJavaComment,
+  generateJavaServiceInterface,
   type GeneratorOptions 
 } from './generator.js';
 export { generateApiClient, watchApiClient, type CodegenOptions, type WatchOptions } from './client-generator.js';
@@ -34,7 +35,7 @@ export {
 } from './builtin-plugins.js';
 
 import { parseSourceFileFull } from './parser.js';
-import { generateJavaClass, generateJavaFromInterface } from './generator.js';
+import { generateJavaClass, generateJavaFromInterface, generateJavaServiceInterface } from './generator.js';
 import type { TranspilerOptions } from './types.js';
 
 /**
@@ -49,8 +50,22 @@ export function transpile(
 
   // Process classes
   parsedFile.classes.forEach(cls => {
-    const javaCode = generateJavaClass(cls, options);
-    result.set(`${cls.name}.java`, javaCode);
+    const isService = cls.decorators.some(d => d.name === 'Service');
+    if (isService) {
+      // Service interface (e.g. UserService.java)
+      const interfaceCode = generateJavaServiceInterface(cls, options);
+      result.set(`${cls.name}.java`, interfaceCode);
+      // Service implementation (e.g. UserServiceImpl.java)
+      const implCode = generateJavaClass(cls, {
+        ...options,
+        packageName: `${options.packageName}.impl`,
+        generateAsServiceImpl: true,
+      });
+      result.set(`${cls.name}Impl.java`, implCode);
+    } else {
+      const javaCode = generateJavaClass(cls, options);
+      result.set(`${cls.name}.java`, javaCode);
+    }
   });
 
   // Process interfaces

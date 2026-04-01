@@ -94,6 +94,9 @@ export function generateJavaClass(
     // Redis Repository extends RedisRepository
     const entityName = getEntityNameFromRepository(transformedClass);
     lines.push(`public interface ${transformedClass.name} extends RedisRepository<${entityName}, String> {`);
+  } else if (classType === 'service' && options.generateAsServiceImpl) {
+    // Service implementation class — implements the service interface
+    lines.push(`public class ${transformedClass.name}Impl implements ${transformedClass.name} {`);
   } else {
     lines.push(`public class ${transformedClass.name} {`);
   }
@@ -119,10 +122,11 @@ export function generateJavaClass(
 
   // Methods - skip for repository (BaseMapper provides methods)
   if (classType !== 'repository' && !transformedClass.decorators.some(d => d.name === 'RedisRepository' || d.name === 'RedisRepo')) {
+    const addOverride = classType === 'service' && options.generateAsServiceImpl === true;
     transformedClass.methods.forEach(method => {
       // Apply method-level plugin transformations
       const transformedMethod = pluginRegistry.applyMethodTransform(method, context);
-      generateMethod(transformedMethod, lines, pluginRegistry, context);
+      generateMethod(transformedMethod, lines, pluginRegistry, context, addOverride);
       lines.push('');
     });
   }
@@ -142,8 +146,60 @@ export function generateJavaClass(
 }
 
 /**
- * Create default plugin registry with builtin plugins
+ * Generate a Java interface for a @Service class.
+ * Produces a pure business interface with all public method signatures but no implementation.
  */
+export function generateJavaServiceInterface(
+  parsedClass: ParsedClass,
+  options: GeneratorOptions
+): string {
+  const lines: string[] = [];
+  const imports = new Set<string>();
+
+  // Base package (strip .impl and/or .service suffixes to reach root)
+  const basePackage = options.packageName.replace(/\.(service(\.impl)?|impl)$/, '');
+  imports.add('java.util.List');
+  imports.add('java.util.Map');
+  imports.add(`${basePackage}.entity.*`);
+  imports.add(`${basePackage}.model.*`);
+
+  // Package declaration
+  lines.push(`package ${options.packageName};`);
+  lines.push('');
+
+  // Import statements
+  const sortedImports = [...imports].sort();
+  sortedImports.forEach(imp => lines.push(`import ${imp};`));
+  lines.push('');
+
+  // Class-level comment (JSDoc → Javadoc)
+  if (parsedClass.comment) {
+    lines.push(...generateJavaComment(parsedClass.comment, ''));
+  }
+
+  // Interface declaration
+  lines.push(`public interface ${parsedClass.name} {`);
+  lines.push('');
+
+  // Method signatures only (no body, no implementation annotations)
+  parsedClass.methods.forEach(method => {
+    if (method.comment) {
+      lines.push(...generateJavaComment(method.comment, '    '));
+    }
+    const returnType = mapType(method.returnType);
+    const params = method.parameters.map(p => {
+      let javaType = mapParamType(p.name, p.type);
+      return `${javaType} ${p.name}`;
+    }).join(', ');
+    lines.push(`    ${returnType} ${method.name}(${params});`);
+    lines.push('');
+  });
+
+  lines.push('}');
+  return lines.join('\n');
+}
+
+
 function createDefaultPluginRegistry(): PluginRegistry {
   const registry = new PluginRegistry();
   registry.registerAll(getBuiltinPlugins());
@@ -286,6 +342,11 @@ function collectImports(parsedClass: ParsedClass, imports: Set<string>, classTyp
       addEntityMapperImports(parsedClass, imports, options);
       // Add DTO imports from method parameters and return types
       addDtoImports(parsedClass, imports, options);
+      // When generating the Impl class, also import the service interface
+      if (options.generateAsServiceImpl) {
+        const interfacePackage = options.packageName.replace(/\.impl$/, '');
+        imports.add(`${interfacePackage}.${parsedClass.name}`);
+      }
       break;
     case 'controller':
       imports.add('org.springframework.web.bind.annotation.RestController');
@@ -794,7 +855,8 @@ function generateMethod(
   method: ParsedMethod, 
   lines: string[],
   pluginRegistry?: PluginRegistry,
-  context?: TransformContext
+  context?: TransformContext,
+  addOverride?: boolean
 ): void {
   // Transform method decorators through plugins
   const transformedDecorators = pluginRegistry && context
@@ -804,6 +866,11 @@ function generateMethod(
   // Method-level comment (JSDoc → Javadoc)
   if (method.comment) {
     lines.push(...generateJavaComment(method.comment, '    '));
+  }
+
+  // @Override comes first for service implementation methods
+  if (addOverride) {
+    lines.push('    @Override');
   }
   
   // Method annotations
@@ -883,12 +950,8 @@ function generateMethod(
       }
     });
     
-    // Smart type mapping for parameters
-    let javaType = mapType(p.type);
-    // Map id parameters to Long
-    if (p.type === 'number' && (p.name === 'id' || p.name.includes('Id'))) {
-      javaType = ID_TYPE_MAPPING.default;
-    }
+    // Smart type mapping for parameters (id params → Long)
+    const javaType = mapParamType(p.name, p.type);
     
     return `${annotations.join(' ')} ${javaType} ${p.name}`.trim();
   }).join(', ');
@@ -940,8 +1003,22 @@ function generateGettersSetters(parsedClass: ParsedClass, lines: string[]): void
 }
 
 /**
- * Map TypeScript type to Java type
+ * Determine whether a numeric method parameter should be typed as Long (e.g. ID parameters).
  */
+function isIdParameter(paramName: string, paramType: string): boolean {
+  return paramType === 'number' && (paramName === 'id' || paramName.includes('Id'));
+}
+
+/**
+ * Map a method parameter type, applying smart ID → Long promotion.
+ */
+function mapParamType(paramName: string, paramType: string): string {
+  if (isIdParameter(paramName, paramType)) {
+    return ID_TYPE_MAPPING.default;
+  }
+  return mapType(paramType);
+}
+
 export function mapType(tsType: string): string {
   // Handle nullable types
   if (tsType.endsWith(' | null')) {

@@ -6,7 +6,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { glob } from 'glob';
 import { parseSourceFileFull } from '../parser.js';
-import { generateJavaClass, getUtilityTypeUsages, clearUtilityTypeUsages, generateUtilityTypeClass, generateJavaFromInterface, getEnumTypeUsages, clearEnumTypeUsages, generateEnumClass } from '../generator.js';
+import { generateJavaClass, getUtilityTypeUsages, clearUtilityTypeUsages, generateUtilityTypeClass, generateJavaFromInterface, generateJavaServiceInterface, getEnumTypeUsages, clearEnumTypeUsages, generateEnumClass } from '../generator.js';
 import { PluginRegistry } from '../plugins.js';
 import { getBuiltinPlugins } from '../builtin-plugins.js';
 import type { ParsedClass } from '../types.js';
@@ -198,6 +198,76 @@ export async function transpileCommand(source: string, options: TranspileOptions
 
         const subdir = getJavaSubdir(cls);
         const subPackage = `${options.package}.${subdir}`;
+        const isService = subdir === 'service';
+
+        if (isService) {
+          // --- Service interface ---
+          const ifaceCode = generateJavaServiceInterface(cls, {
+            outDir: outputDir,
+            packageName: subPackage,
+            useLombok: options.lombok,
+            javaVersion: options.javaVersion,
+            springBootVersion: options.springBoot,
+            pluginRegistry,
+            sourceFile: file,
+            allClasses: classes,
+          });
+          const ifaceDir = path.join(packageDir, 'service');
+          const ifaceFile = path.join(ifaceDir, `${cls.name}.java`);
+
+          if (options.dryRun) {
+            console.log(`  📝 Would generate: ${path.relative(outputDir, ifaceFile)}`);
+            if (options.verbose) {
+              console.log('─'.repeat(60));
+              console.log(ifaceCode);
+              console.log('─'.repeat(60));
+            }
+          } else {
+            fs.mkdirSync(ifaceDir, { recursive: true });
+            fs.writeFileSync(ifaceFile, ifaceCode);
+            generatedFiles.push(ifaceFile);
+            if (options.verbose) {
+              console.log(`    ✅ Generated: ${path.relative(outputDir, ifaceFile)}`);
+            }
+          }
+
+          // --- Service implementation ---
+          const implPackage = `${subPackage}.impl`;
+          const implCode = generateJavaClass(cls, {
+            outDir: outputDir,
+            packageName: implPackage,
+            useLombok: options.lombok,
+            javaVersion: options.javaVersion,
+            springBootVersion: options.springBoot,
+            generateAsServiceImpl: true,
+            pluginRegistry,
+            sourceFile: file,
+            allClasses: classes,
+          });
+          const implDir = path.join(packageDir, 'service', 'impl');
+          const implFile = path.join(implDir, `${cls.name}Impl.java`);
+
+          if (options.dryRun) {
+            console.log(`  📝 Would generate: ${path.relative(outputDir, implFile)}`);
+            if (options.verbose) {
+              console.log('─'.repeat(60));
+              console.log(implCode);
+              console.log('─'.repeat(60));
+            }
+          } else {
+            fs.mkdirSync(implDir, { recursive: true });
+            fs.writeFileSync(implFile, implCode);
+            generatedFiles.push(implFile);
+            if (options.incremental) {
+              updateCacheEntry(file, sourceCode);
+            }
+            if (options.verbose) {
+              console.log(`    ✅ Generated: ${path.relative(outputDir, implFile)}`);
+            }
+          }
+
+          successCount++;
+        } else {
         const javaCode = generateJavaClass(cls, {
           outDir: outputDir,
           packageName: subPackage,
@@ -235,6 +305,7 @@ export async function transpileCommand(source: string, options: TranspileOptions
         }
         
         successCount++;
+        }
       }
 
       // Process interfaces (generate as DTO classes)
