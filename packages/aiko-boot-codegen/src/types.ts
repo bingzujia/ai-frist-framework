@@ -11,6 +11,10 @@ export const TYPE_MAPPING: Record<string, string> = {
   'boolean': 'Boolean',
   'Date': 'LocalDateTime',
   'any': 'Object',
+  // TypeScript's 'unknown' and 'object' both map to Object in Java.
+  // Java's Object is the common supertype; callers that need narrower types
+  // should use explicit casts or typed parameters rather than relying on the field type.
+  'unknown': 'Object',
   'object': 'Object',
   'void': 'void',
   'null': 'null',
@@ -576,4 +580,18 @@ export interface UtilityTypeUsage {
   fields: string[];
   /** Generated Java class name: UserWithoutId */
   generatedClassName: string;
+}
+
+/**
+ * Enum type usage tracking.
+ * Collected when a field's TypeScript type is a string literal union
+ * (e.g. `'done' | 'failed'`), which maps to a Java enum class.
+ */
+export interface EnumTypeUsage {
+  /** Original TypeScript union type, e.g. `'done' | 'failed'` */
+  tsType: string;
+  /** Java enum class name derived from the first field that used this type, e.g. `Status` */
+  enumName: string;
+  /** Uppercase enum constants, e.g. `['DONE', 'FAILED']` */
+  values: string[];
 }

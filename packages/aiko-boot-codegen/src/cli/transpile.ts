@@ -6,7 +6,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { glob } from 'glob';
 import { parseSourceFileFull } from '../parser.js';
-import { generateJavaClass, getUtilityTypeUsages, clearUtilityTypeUsages, generateUtilityTypeClass, generateJavaFromInterface } from '../generator.js';
+import { generateJavaClass, getUtilityTypeUsages, clearUtilityTypeUsages, generateUtilityTypeClass, generateJavaFromInterface, getEnumTypeUsages, clearEnumTypeUsages, generateEnumClass } from '../generator.js';
 import { PluginRegistry } from '../plugins.js';
 import { getBuiltinPlugins } from '../builtin-plugins.js';
 import type { ParsedClass } from '../types.js';
@@ -125,6 +125,7 @@ export async function transpileCommand(source: string, options: TranspileOptions
 
   // Clear utility type tracking
   clearUtilityTypeUsages();
+  clearEnumTypeUsages();
 
   for (const file of files) {
     try {
@@ -323,6 +324,43 @@ export async function transpileCommand(source: string, options: TranspileOptions
         fs.writeFileSync(targetFile, utilityClassCode);
         generatedFiles.push(targetFile);
         console.log(`  ✅ Generated: ${usage.generatedClassName}.java (from ${usage.original})`);
+      }
+    }
+  }
+
+  // Generate enum classes (from string literal union field types)
+  const enumTypes = getEnumTypeUsages();
+  if (enumTypes.length > 0) {
+    if (options.verbose) {
+      console.log('');
+      console.log(`📦 Generating ${enumTypes.length} enum class(es)...`);
+    }
+    for (const usage of enumTypes) {
+      const enumCode = generateEnumClass(usage, {
+        outDir: outputDir,
+        packageName: options.package,
+        useLombok: options.lombok,
+        javaVersion: options.javaVersion,
+        springBootVersion: options.springBoot,
+      });
+
+      const modelDir = path.join(packageDir, 'model');
+      const targetFile = path.join(modelDir, `${usage.enumName}.java`);
+
+      if (options.dryRun) {
+        console.log(`  📝 Would generate: ${path.relative(outputDir, targetFile)}`);
+        if (options.verbose) {
+          console.log('─'.repeat(60));
+          console.log(enumCode);
+          console.log('─'.repeat(60));
+        }
+      } else {
+        fs.mkdirSync(modelDir, { recursive: true });
+        fs.writeFileSync(targetFile, enumCode);
+        generatedFiles.push(targetFile);
+        if (options.verbose) {
+          console.log(`    ✅ Generated: ${path.relative(outputDir, targetFile)}`);
+        }
       }
     }
   }

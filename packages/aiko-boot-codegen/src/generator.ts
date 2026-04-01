@@ -3,13 +3,19 @@
  * Generates Java source code from parsed TypeScript classes
  */
 import { TYPE_MAPPING, IMPORT_MAPPING, ID_TYPE_MAPPING } from './types.js';
-import type { ParsedClass, ParsedMethod, TranspilerOptions, UtilityTypeUsage, ParsedComment, ParsedImport, ParsedInterface } from './types.js';
+import type { ParsedClass, ParsedMethod, TranspilerOptions, UtilityTypeUsage, EnumTypeUsage, ParsedComment, ParsedImport, ParsedInterface } from './types.js';
 import { PluginRegistry, type TransformContext } from './plugins.js';
 import { getBuiltinPlugins } from './builtin-plugins.js';
 import { generateMethodBody } from './method-body-generator.js';
 
 /** Global utility type collector */
 const utilityTypeUsages: Map<string, UtilityTypeUsage> = new Map();
+
+/**
+ * Global enum type collector.
+ * Key: original TS union type string (e.g. `'done' | 'failed'`).
+ */
+const enumTypeUsages: Map<string, EnumTypeUsage> = new Map();
 
 /**
  * Generator options with plugin support
@@ -315,9 +321,12 @@ function collectImports(parsedClass: ParsedClass, imports: Set<string>, classTyp
             imports.add('jakarta.validation.constraints.Size');
           }
         });
-        // Collect imports from field types (e.g., User[] -> entity.User)
-        const javaType = mapType(field.type);
-        collectImportsFromType(javaType, imports, options.packageName);
+        // String literal union fields become enums in the same model package — no import needed.
+        // For all other field types, collect the standard java imports.
+        if (!isStringLiteralUnion(field.type)) {
+          const javaType = mapType(field.type);
+          collectImportsFromType(javaType, imports, options.packageName);
+        }
       });
       break;
     case 'redis':
@@ -668,12 +677,49 @@ function generateDtoFields(parsedClass: ParsedClass, lines: string[], _options: 
 }
 
 /**
+ * Return true when every pipe-separated token of a TypeScript type is a
+ * single-quoted or double-quoted string literal, e.g. `'done' | 'failed'`.
+ */
+function isStringLiteralUnion(tsType: string): boolean {
+  const parts = tsType.split('|').map(p => p.trim());
+  if (parts.length === 0) return false;
+  return parts.every(p =>
+    (p.startsWith("'") && p.endsWith("'")) ||
+    (p.startsWith('"') && p.endsWith('"'))
+  );
+}
+
+/**
+ * Parse a string literal union into its raw values (quotes stripped).
+ * `'done' | 'failed'` → `['done', 'failed']`
+ */
+function parseStringLiteralUnion(tsType: string): string[] {
+  return tsType.split('|').map(p => p.trim().replace(/^['"]|['"]$/g, ''));
+}
+
+/**
  * Map field type with smart number handling
  * - id fields use Long
  * - age, count etc. use Integer
+ * - string literal union fields ('done' | 'failed') are converted to Java enums
  */
 export function mapFieldType(field: { name: string; type: string; decorators: any[] }): string {
   const tsType = field.type;
+
+  // Handle string literal union types → Java enum
+  if (isStringLiteralUnion(tsType)) {
+    // Enum name is derived from the field name (PascalCase). When the same union
+    // type appears on multiple fields, the name of the first-registered field is
+    // used for all of them — this is intentional and keeps the generated enum stable.
+    const enumName = field.name.charAt(0).toUpperCase() + field.name.slice(1);
+    if (!enumTypeUsages.has(tsType)) {
+      const rawValues = parseStringLiteralUnion(tsType);
+      // Convert each literal to an uppercase Java constant (hyphens → underscores)
+      const values = rawValues.map(v => v.toUpperCase().replace(/-/g, '_'));
+      enumTypeUsages.set(tsType, { tsType, enumName, values });
+    }
+    return enumTypeUsages.get(tsType)!.enumName;
+  }
   
   // Check if it's a Redis field (has @Indexed or is Redis entity)
   const isRedis = field.decorators.some(d => d.name === 'Indexed' || d.name === 'Id');
@@ -871,7 +917,8 @@ function generateGettersSetters(parsedClass: ParsedClass, lines: string[]): void
       // For Redis entities, id should be String; for others, use Long
       javaType = isRedis ? 'String' : 'Long';
     } else {
-      javaType = mapType(field.type);
+      // Use mapFieldType to get enum names for string literal union types
+      javaType = mapFieldType(field);
     }
     
     const capitalName = field.name.charAt(0).toUpperCase() + field.name.slice(1);
@@ -902,6 +949,24 @@ export function mapType(tsType: string): string {
   // Handle inline object types: { data: User[]; total: number } -> Map<String, Object>
   if (tsType.startsWith('{') && tsType.endsWith('}')) {
     return 'Map<String, Object>';
+  }
+
+  // Handle string literal union types: 'done' | 'failed' -> String
+  // (In a field context, mapFieldType should be used instead to get the enum name.
+  //  Here we produce a safe String fallback for return types, method params, etc.)
+  if (isStringLiteralUnion(tsType)) {
+    return 'String';
+  }
+
+  // Handle Record<K, V> -> Map<K_java, V_java>
+  // Note: the regex `[^,]+` does not handle nested generics in the value type
+  // (e.g. Record<string, Map<string, number>>). Such cases are rare in typical
+  // Spring Boot entity code and are left as a known limitation.
+  const recordMatch = tsType.match(/^Record<([^,]+),\s*(.+)>$/);
+  if (recordMatch) {
+    const keyType = mapType(recordMatch[1].trim());
+    const valType = mapType(recordMatch[2].trim());
+    return `Map<${keyType}, ${valType}>`;
   }
 
   // Handle Omit, Pick, Partial generic types -> generate new class
@@ -994,6 +1059,34 @@ export function registerUtilityTypeUsage(
       generatedClassName,
     });
   }
+}
+
+/**
+ * Get all collected enum type usages.
+ */
+export function getEnumTypeUsages(): EnumTypeUsage[] {
+  return Array.from(enumTypeUsages.values());
+}
+
+/**
+ * Clear enum type usages (call before processing a new batch).
+ */
+export function clearEnumTypeUsages(): void {
+  enumTypeUsages.clear();
+}
+
+/**
+ * Generate a Java enum class for an EnumTypeUsage.
+ * The enum is placed in `${options.packageName}.model`.
+ */
+export function generateEnumClass(usage: EnumTypeUsage, options: TranspilerOptions): string {
+  const lines: string[] = [];
+  lines.push(`package ${options.packageName}.model;`);
+  lines.push('');
+  lines.push(`public enum ${usage.enumName} {`);
+  lines.push(`    ${usage.values.join(', ')}`);
+  lines.push('}');
+  return lines.join('\n');
 }
 
 /**
@@ -1279,6 +1372,18 @@ function collectImportsFromType(javaType: string, imports: Set<string>, currentP
     collectImportsFromType(innerType, imports, currentPackage);
     return;
   }
+
+  // Handle Map<K, V> (e.g. from Record<K,V> or inline objects)
+  if (javaType.startsWith('Map<')) {
+    imports.add('java.util.Map');
+    return;
+  }
+
+  // Handle Set<X>
+  if (javaType.startsWith('Set<')) {
+    imports.add('java.util.Set');
+    return;
+  }
   
   // Handle basic Java types that need imports
   const typeImportMap: Record<string, string> = {
@@ -1297,7 +1402,7 @@ function collectImportsFromType(javaType: string, imports: Set<string>, currentP
   // Handle entity/model references - assume same package prefix
   // e.g., User in model package needs entity import
   const primitiveTypes = ['String', 'Integer', 'Long', 'Double', 'Float', 'Boolean', 'Object', 'void'];
-  if (!primitiveTypes.includes(javaType) && !javaType.includes('.')) {
+  if (!primitiveTypes.includes(javaType) && !javaType.includes('.') && !javaType.includes('<')) {
     // Get base package (remove 'model' suffix)
     const basePackage = currentPackage.replace(/\.model$/, '');
     imports.add(`${basePackage}.entity.${javaType}`);

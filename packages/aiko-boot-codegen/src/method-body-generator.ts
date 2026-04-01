@@ -30,13 +30,32 @@ let mapTypedParamFieldTypes: Map<string, Map<string, string>> = new Map();
 /**
  * Parse a TypeScript inline object type string like `{ to: string; userId: number }`
  * into a Map of field name → TS type.
+ *
+ * Uses bracket-depth tracking when splitting on `;` / `,` so that field types that
+ * contain nested generics (e.g. `items: Map<string, number>`) are not split incorrectly.
  */
 function parseInlineObjectType(typeStr: string): Map<string, string> {
   const fields = new Map<string, string>();
   // Strip outer braces
   const inner = typeStr.slice(typeStr.indexOf('{') + 1, typeStr.lastIndexOf('}')).trim();
-  // Split on semicolons or commas, each part is "name?: type"
-  for (const part of inner.split(/[;,]/)) {
+
+  // Split on `;` or `,` only when we are at depth 0 (not inside <> or ())
+  const parts: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of inner) {
+    if (ch === '<' || ch === '(' || ch === '[') { depth++; current += ch; }
+    else if (ch === '>' || ch === ')' || ch === ']') { depth--; current += ch; }
+    else if ((ch === ';' || ch === ',') && depth === 0) {
+      parts.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) parts.push(current);
+
+  for (const part of parts) {
     const clean = part.trim();
     if (!clean) continue;
     const match = clean.match(/^(\w+)\??:\s*(.+)$/);
