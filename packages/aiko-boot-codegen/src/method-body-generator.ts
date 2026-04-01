@@ -21,6 +21,33 @@ import type {
 let mapTypedParams: Set<string> = new Set();
 
 /**
+ * Per-param field-type map: paramName → (fieldName → TS type).
+ * Populated from inline object type annotations so that generatePropertyAccess can emit
+ * the right Java cast (e.g. `(String) body.get("to")` for string fields).
+ */
+let mapTypedParamFieldTypes: Map<string, Map<string, string>> = new Map();
+
+/**
+ * Parse a TypeScript inline object type string like `{ to: string; userId: number }`
+ * into a Map of field name → TS type.
+ */
+function parseInlineObjectType(typeStr: string): Map<string, string> {
+  const fields = new Map<string, string>();
+  // Strip outer braces
+  const inner = typeStr.slice(typeStr.indexOf('{') + 1, typeStr.lastIndexOf('}')).trim();
+  // Split on semicolons or commas, each part is "name?: type"
+  for (const part of inner.split(/[;,]/)) {
+    const clean = part.trim();
+    if (!clean) continue;
+    const match = clean.match(/^(\w+)\??:\s*(.+)$/);
+    if (match) {
+      fields.set(match[1], match[2].trim());
+    }
+  }
+  return fields;
+}
+
+/**
  * Generate Java method body from parsed statements
  */
 export function generateMethodBody(method: ParsedMethod, indent: string = '        '): string[] {
@@ -31,6 +58,14 @@ export function generateMethodBody(method: ParsedMethod, indent: string = '     
       .filter(p => p.type.trimStart().startsWith('{') && p.type.trimEnd().endsWith('}'))
       .map(p => p.name)
   );
+  // Also extract field types for each Map-typed param so that generated property accesses
+  // can emit typed casts (e.g. `(String) body.get("to")`).
+  mapTypedParamFieldTypes = new Map();
+  for (const p of method.parameters) {
+    if (mapTypedParams.has(p.name)) {
+      mapTypedParamFieldTypes.set(p.name, parseInlineObjectType(p.type));
+    }
+  }
 
   const lines: string[] = [];
   
@@ -389,6 +424,14 @@ function generatePropertyAccess(expr: { object: ParsedExpression; property: stri
   
   // Check if this is a Map-typed parameter - use .get("key") instead of getter
   if (expr.object.type === 'identifier' && mapTypedParams.has(expr.object.name)) {
+    const fieldTypes = mapTypedParamFieldTypes.get(expr.object.name);
+    const fieldTsType = fieldTypes?.get(prop);
+    if (fieldTsType === 'string') {
+      // Cast to String so callers expecting String compile without errors.
+      return `(String) ${obj}.get("${prop}")`;
+    }
+    // For other field types (number, boolean, etc.) leave as Object; the Number()
+    // wrapper or explicit casts in the caller expression handle the conversion.
     return `${obj}.get("${prop}")`;
   }
 
@@ -533,7 +576,8 @@ function generateMethodCall(expr: ParsedMethodCall): string {
   
   // Handle Number() conversion
   if (expr.method === 'Number') {
-    return `Integer.valueOf(${args})`;
+    // body.get("key") returns Object; String.valueOf converts it safely before parsing.
+    return `Long.parseLong(String.valueOf(${args}))`;
   }
   
   return `${methodName}(${args})`;
@@ -639,6 +683,11 @@ function generateBinaryExpression(expr: ParsedBinaryExpression): string {
     return `${left} && ${right}`;
   }
   if (operator === '||') {
+    // Deduplicate identical null checks that arise from `=== undefined || === null`
+    // both becoming `== null`.  e.g. `x == null || x == null` -> `x == null`
+    if (left === right) {
+      return left;
+    }
     return `${left} || ${right}`;
   }
   
