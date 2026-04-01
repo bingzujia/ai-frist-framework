@@ -10,7 +10,7 @@
     "build": "tsup",
     "lint": "eslint src",
     "precodegen": "pnpm --filter \"@ai-partner-x/aiko-boot-codegen\" build",
-    "codegen": "aiko-codegen transpile ./src --out ./gen-java --package com.example.apiextend --verbose"
+    "codegen": "node ../../../packages/aiko-boot-codegen/dist/cli/index.js transpile ./src --out ./gen-java --package com.example.apiextend --verbose"
   },
   "dependencies": {
     "@ai-partner-x/aiko-boot": "workspace:*",
@@ -21,7 +21,6 @@
     "reflect-metadata": "^0.2.1"
   },
   "devDependencies": {
-    "@ai-partner-x/aiko-boot-codegen": "workspace:*",
     "@swc-node/register": "^1.11.1",
     "@swc/core": "^1.15.18",
     "@types/cors": "^2.8.17",
