@@ -1,6 +1,6 @@
 # API 文档
 
-本文档提供了 @ai-partner-x/aiko-boot-codegen 的详细 API 参考。
+本文档提供了 @ai-partner-x/aiko-boot-codegen 的完整 API 类型参考。
 
 ## 目录
 
@@ -8,7 +8,11 @@
 - [类型定义](#类型定义)
 - [插件 API](#插件-api)
 - [缓存 API](#缓存-api)
-- [CLI API](#cli-api)
+- [构建工具 API](#构建工具-api)
+- [常量](#常量)
+- [错误处理](#错误处理)
+
+---
 
 ## 核心 API
 
@@ -28,38 +32,46 @@ function transpile(
 **参数：**
 
 | 参数 | 类型 | 必填 | 说明 |
-|------|--------|--------|------|
-| `sourceCode` | `string` | 是 | TypeScript 源代码 |
+|------|------|------|------|
+| `sourceCode` | `string` | 是 | TypeScript 源代码字符串 |
 | `options` | `TranspilerOptions` | 是 | 转换选项 |
 
 **返回值：**
 
-返回一个 `Map<string, string>`，其中键是 Java 文件名，值是生成的 Java 代码。
+返回 `Map<string, string>`，键为 Java 文件名（如 `User.java`），值为生成的 Java 代码字符串。
 
 **示例：**
 
 ```typescript
 import { transpile } from '@ai-partner-x/aiko-boot-codegen';
 
-const sourceCode = `
-  @Entity
-  class User {
-    @TableId
-    id: number;
-    name: string;
-  }
-`;
+const result = transpile(
+  `
+    import { Entity, TableId, TableField } from '@ai-partner-x/aiko-boot-starter-orm';
 
-const result = transpile(sourceCode, {
-  packageName: 'com.example.entity',
-});
+    @Entity
+    class User {
+      @TableId
+      id: number;
+
+      @TableField('user_name')
+      name: string;
+    }
+  `,
+  {
+    outDir: './gen',
+    packageName: 'com.example.entity',
+  }
+);
 
 console.log(result.get('User.java'));
 ```
 
+---
+
 ### parseSourceFile
 
-解析 TypeScript 源文件并提取类信息。
+解析 TypeScript 源文件，提取类信息列表（不含接口、导入等）。
 
 **签名：**
 
@@ -73,34 +85,34 @@ function parseSourceFile(
 **参数：**
 
 | 参数 | 类型 | 必填 | 说明 |
-|------|--------|--------|------|
+|------|------|------|------|
 | `sourceCode` | `string` | 是 | TypeScript 源代码 |
-| `fileName` | `string` | 否 | 文件名（默认为 'source.ts'） |
+| `fileName` | `string` | 否 | 文件名（默认 `'source.ts'`） |
 
 **返回值：**
 
-返回一个 `ParsedClass[]` 数组，包含解析的类信息。
+返回 `ParsedClass[]` 数组。
 
 **示例：**
 
 ```typescript
 import { parseSourceFile } from '@ai-partner-x/aiko-boot-codegen';
 
-const sourceCode = `
+const classes = parseSourceFile(`
   @Entity
   class User {
     id: number;
   }
-`;
-
-const classes = parseSourceFile(sourceCode);
-console.log(classes[0].name); // 'User'
+`);
+console.log(classes[0].name);       // 'User'
 console.log(classes[0].decorators); // [{ name: 'Entity', args: {} }]
 ```
 
+---
+
 ### parseSourceFileFull
 
-解析 TypeScript 源文件并返回完整信息（包括导入、注释、接口等）。
+解析 TypeScript 源文件，返回完整信息（导入、类、接口、注释等）。
 
 **签名：**
 
@@ -114,38 +126,31 @@ function parseSourceFileFull(
 **参数：**
 
 | 参数 | 类型 | 必填 | 说明 |
-|------|--------|--------|------|
+|------|------|------|------|
 | `sourceCode` | `string` | 是 | TypeScript 源代码 |
-| `fileName` | `string` | 否 | 文件名（默认为 'source.ts'） |
+| `fileName` | `string` | 否 | 文件名（默认 `'source.ts'`） |
 
 **返回值：**
 
-返回一个 `ParsedSourceFile` 对象，包含完整的解析信息。
+返回 `ParsedSourceFile` 对象。
 
 **示例：**
 
 ```typescript
 import { parseSourceFileFull } from '@ai-partner-x/aiko-boot-codegen';
 
-const sourceCode = `
-  import { Entity } from '@ai-partner-x/aiko-boot-starter-orm';
-
-  @Entity
-  class User {
-    id: number;
-  }
-`;
-
 const result = parseSourceFileFull(sourceCode);
-console.log(result.imports); // 导入信息
-console.log(result.classes); // 类信息
+console.log(result.imports);    // 导入信息
+console.log(result.classes);    // 类信息
 console.log(result.interfaces); // 接口信息
-console.log(result.comments); // 注释信息
+console.log(result.comments);   // 注释
 ```
+
+---
 
 ### generateJavaClass
 
-生成 Java 类代码。
+根据解析后的类信息生成 Java 类代码。
 
 **签名：**
 
@@ -159,7 +164,7 @@ function generateJavaClass(
 **参数：**
 
 | 参数 | 类型 | 必填 | 说明 |
-|------|--------|--------|------|
+|------|------|------|------|
 | `parsedClass` | `ParsedClass` | 是 | 解析的类信息 |
 | `options` | `GeneratorOptions` | 是 | 生成器选项 |
 
@@ -167,34 +172,11 @@ function generateJavaClass(
 
 返回生成的 Java 代码字符串。
 
-**示例：**
-
-```typescript
-import { generateJavaClass } from '@ai-partner-x/aiko-boot-codegen';
-
-const parsedClass = {
-  name: 'User',
-  decorators: [{ name: 'Entity', args: {} }],
-  fields: [
-    { name: 'id', type: 'number', decorators: [{ name: 'TableId', args: {} }] },
-    { name: 'name', type: 'string', decorators: [] },
-  ],
-  methods: [],
-};
-
-const javaCode = generateJavaClass(parsedClass, {
-  packageName: 'com.example.entity',
-  useLombok: false,
-  javaVersion: '17',
-  springBootVersion: '3.2.0',
-});
-
-console.log(javaCode);
-```
+---
 
 ### generateApiClient
 
-生成前端 API 客户端代码。
+从 `src/entity/`、`src/dto/`、`src/controller/` 目录生成前端 API Client。
 
 **签名：**
 
@@ -202,19 +184,14 @@ console.log(javaCode);
 function generateApiClient(options?: CodegenOptions): void
 ```
 
-**参数：**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|--------|--------|------|
-| `options` | `CodegenOptions` | 否 | 代码生成选项 |
-
-**CodegenOptions：**
+**`CodegenOptions` 参数：**
 
 | 属性 | 类型 | 默认值 | 说明 |
-|--------|--------|----------|------|
+|------|------|--------|------|
 | `srcDir` | `string` | `'./src'` | 源目录 |
 | `outDir` | `string` | `'./dist/client'` | 输出目录 |
-| `silent` | `boolean` | `false` | 是否静默模式 |
+| `silent` | `boolean` | `false` | 是否静默模式（不输出日志） |
+| `force` | `boolean` | `false` | 强制全量生成（忽略增量检查） |
 
 **示例：**
 
@@ -225,8 +202,45 @@ generateApiClient({
   srcDir: './src',
   outDir: './dist/client',
   silent: false,
+  force: false,
 });
 ```
+
+---
+
+### watchApiClient
+
+Watch 模式：监听源文件变化，自动触发增量生成。
+
+**签名：**
+
+```typescript
+function watchApiClient(options?: WatchOptions): void
+```
+
+**`WatchOptions` 参数（继承 `CodegenOptions`）：**
+
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `srcDir` | `string` | `'./src'` | 源目录 |
+| `outDir` | `string` | `'./dist/client'` | 输出目录 |
+| `silent` | `boolean` | `false` | 是否静默模式 |
+| `force` | `boolean` | `false` | 是否强制全量生成 |
+| `debounce` | `number` | `200` | 文件变化防抖时间（毫秒） |
+
+**示例：**
+
+```typescript
+import { watchApiClient } from '@ai-partner-x/aiko-boot-codegen';
+
+watchApiClient({
+  srcDir: './src',
+  outDir: './dist/client',
+  debounce: 300,
+});
+```
+
+---
 
 ## 类型定义
 
@@ -236,37 +250,71 @@ generateApiClient({
 
 ```typescript
 interface TranspilerOptions {
-  /** Java 包名 */
+  /** 输出目录（必填） */
+  outDir: string;
+  /** Java 包名（必填） */
   packageName: string;
-  
-  /** 是否使用 Lombok */
-  useLombok?: boolean;
-  
-  /** Java 版本 */
+  /** Java 版本，默认 '17' */
   javaVersion?: '11' | '17' | '21';
-  
-  /** Spring Boot 版本 */
+  /** Spring Boot 版本，默认 '3.2.0' */
   springBootVersion?: string;
-  
-  /** 插件注册表 */
-  pluginRegistry?: PluginRegistry;
-  
-  /** 源文件路径（用于插件上下文） */
-  sourceFile?: string;
-  
-  /** 当前文件中的所有解析类（用于插件上下文） */
-  allClasses?: ParsedClass[];
+  /** 是否生成 Lombok 注解，默认 false */
+  useLombok?: boolean;
 }
 ```
 
 ### GeneratorOptions
 
-生成器选项（扩展自 TranspilerOptions）。
+生成器选项，与 `TranspilerOptions` 完全相同。
 
 ```typescript
-interface GeneratorOptions extends TranspilerOptions {
-  /** 输出目录 */
+type GeneratorOptions = TranspilerOptions;
+```
+
+### CodegenOptions
+
+API Client 生成选项。
+
+```typescript
+interface CodegenOptions {
+  /** 源目录，默认 './src' */
+  srcDir?: string;
+  /** 输出目录，默认 './dist/client' */
   outDir?: string;
+  /** 是否静默模式，默认 false */
+  silent?: boolean;
+  /** 强制全量生成，默认 false */
+  force?: boolean;
+}
+```
+
+### WatchOptions
+
+Watch 模式选项，继承自 `CodegenOptions`。
+
+```typescript
+interface WatchOptions extends CodegenOptions {
+  /** 文件变化防抖时间（毫秒），默认 200 */
+  debounce?: number;
+}
+```
+
+### ParsedSourceFile
+
+解析的源文件信息。
+
+```typescript
+interface ParsedSourceFile {
+  /** 文件路径 */
+  filePath: string;
+  /** 导入声明 */
+  imports: ParsedImport[];
+  /** 类 */
+  classes: ParsedClass[];
+  /** 接口（会被转换为 Java DTO 类） */
+  interfaces: ParsedInterface[];
+  /** 顶层注释 */
+  comments: ParsedComment[];
 }
 ```
 
@@ -278,20 +326,15 @@ interface GeneratorOptions extends TranspilerOptions {
 interface ParsedClass {
   /** 类名 */
   name: string;
-  
-  /** 装饰器 */
+  /** 类级装饰器 */
   decorators: ParsedDecorator[];
-  
   /** 字段 */
   fields: ParsedField[];
-  
   /** 方法 */
   methods: ParsedMethod[];
-  
   /** 构造函数 */
   constructor?: ParsedConstructor;
-  
-  /** 注释 */
+  /** 类级注释 */
   comment?: ParsedComment;
 }
 ```
@@ -302,10 +345,9 @@ interface ParsedClass {
 
 ```typescript
 interface ParsedDecorator {
-  /** 装饰器名称 */
+  /** 装饰器名称（不含 `@`） */
   name: string;
-  
-  /** 装饰器参数 */
+  /** 装饰器参数（键值对） */
   args: Record<string, any>;
 }
 ```
@@ -318,17 +360,13 @@ interface ParsedDecorator {
 interface ParsedField {
   /** 字段名 */
   name: string;
-  
-  /** 字段类型 */
+  /** TypeScript 类型字符串 */
   type: string;
-  
-  /** 装饰器 */
+  /** 字段级装饰器 */
   decorators: ParsedDecorator[];
-  
-  /** 是否可选 */
-  optional?: boolean;
-  
-  /** 注释 */
+  /** 是否为可选字段（带 `?`） */
+  optional: boolean;
+  /** 字段注释 */
   comment?: ParsedComment;
 }
 ```
@@ -341,149 +379,117 @@ interface ParsedField {
 interface ParsedMethod {
   /** 方法名 */
   name: string;
-  
-  /** 返回类型 */
+  /** 返回类型字符串 */
   returnType: string;
-  
-  /** 参数 */
+  /** 参数列表 */
   parameters: ParsedParameter[];
-  
-  /** 装饰器 */
+  /** 方法级装饰器 */
   decorators: ParsedDecorator[];
-  
-  /** 是否异步 */
-  isAsync?: boolean;
-  
-  /** 方法体 */
+  /** 是否为 async 方法 */
+  isAsync: boolean;
+  /** 方法体语句（用于代码转换） */
   body?: ParsedStatement[];
-  
-  /** 注释 */
+  /** 方法注释 */
   comment?: ParsedComment;
 }
 ```
 
 ### ParsedParameter
 
-解析的参数信息。
+解析的方法参数信息。
 
 ```typescript
 interface ParsedParameter {
   /** 参数名 */
   name: string;
-  
-  /** 参数类型 */
+  /** TypeScript 类型字符串 */
   type: string;
-  
-  /** 装饰器 */
+  /** 参数级装饰器 */
   decorators: ParsedDecorator[];
-}
-```
-
-### ParsedSourceFile
-
-解析的源文件信息。
-
-```typescript
-interface ParsedSourceFile {
-  /** 文件路径 */
-  filePath: string;
-  
-  /** 导入 */
-  imports: ParsedImport[];
-  
-  /** 类 */
-  classes: ParsedClass[];
-  
-  /** 接口 */
-  interfaces: ParsedInterface[];
-  
-  /** 注释 */
-  comments: ParsedComment[];
 }
 ```
 
 ### ParsedImport
 
-解析的导入信息。
+解析的导入声明。
 
 ```typescript
 interface ParsedImport {
-  /** 模块路径 */
+  /** 模块路径，如 '@ai-partner-x/aiko-boot' */
   modulePath: string;
-  
-  /** 命名导入 */
+  /** 具名导入，如 ['Service', 'Autowired'] */
   namedImports: string[];
-  
-  /** 默认导入 */
+  /** 默认导入，如 'React' */
   defaultImport?: string;
-  
-  /** 命名空间导入 */
+  /** 命名空间导入，如 '* as fs' */
   namespaceImport?: string;
-  
-  /** 是否仅类型导入 */
-  isTypeOnly?: boolean;
+  /** 是否为 type-only 导入 */
+  isTypeOnly: boolean;
 }
 ```
 
 ### ParsedInterface
 
-解析的接口信息。
+解析的接口信息（转换为 Java DTO 类）。
 
 ```typescript
 interface ParsedInterface {
   /** 接口名 */
   name: string;
-  
-  /** 属性 */
+  /** 接口属性 */
   properties: ParsedInterfaceProperty[];
-  
-  /** 装饰器 */
+  /** 接口级装饰器 */
   decorators: ParsedDecorator[];
-  
-  /** 注释 */
+  /** 接口注释 */
   comment?: ParsedComment;
-  
   /** 是否导出 */
-  isExported?: boolean;
+  isExported: boolean;
 }
 ```
 
 ### ParsedInterfaceProperty
 
-解析的接口属性信息。
+解析的接口属性。
 
 ```typescript
 interface ParsedInterfaceProperty {
   /** 属性名 */
   name: string;
-  
-  /** 属性类型 */
+  /** TypeScript 类型字符串 */
   type: string;
-  
   /** 是否可选 */
-  optional?: boolean;
-  
-  /** 注释 */
+  optional: boolean;
+  /** 属性注释 */
   comment?: string;
 }
 ```
 
 ### ParsedComment
 
-解析的注释信息。
+解析的注释。
 
 ```typescript
 interface ParsedComment {
   /** 注释类型 */
-  type: 'jsdoc' | 'block' | 'line';
-  
-  /** 注释文本 */
+  type: 'jsdoc' | 'line' | 'block';
+  /** 注释文本（不含分隔符） */
   text: string;
-  
-  /** JSDoc 标签 */
+  /** JSDoc 标签（仅 jsdoc 类型有效） */
   tags?: { tag: string; text: string }[];
 }
 ```
+
+### ParsedConstructor
+
+解析的构造函数。
+
+```typescript
+interface ParsedConstructor {
+  parameters: ParsedParameter[];
+}
+```
+
+---
 
 ## 插件 API
 
@@ -493,50 +499,51 @@ interface ParsedComment {
 
 ```typescript
 interface TranspilePlugin {
-  /** 插件名称 */
+  /** 插件名称（必填，用于去重） */
   name: string;
   
-  /** 插件优先级（数字越大执行越早） */
+  /**
+   * 插件优先级（数字越大越先执行），默认 0
+   * 内置插件优先级参考：entity-plugin/mapper-plugin/service-plugin/controller-plugin 为 10，
+   * validation-plugin/date-plugin/querywrapper-plugin 为 5
+   */
   priority?: number;
   
-  /** 转换装饰器 */
+  /** 装饰器转换钩子 */
   transformDecorator?: (decorator: ParsedDecorator, context: TransformContext) => ParsedDecorator;
   
-  /** 转换类型 */
+  /** 类型转换钩子 */
   transformType?: (tsType: string, context: TransformContext) => string;
   
-  /** 转换方法 */
+  /** 方法转换钩子 */
   transformMethod?: (method: ParsedMethod, context: TransformContext) => ParsedMethod;
   
-  /** 转换类 */
+  /** 类转换钩子 */
   transformClass?: (cls: ParsedClass, context: TransformContext) => ParsedClass;
   
-  /** 后处理 */
+  /** 后处理钩子（在 Java 代码生成完毕后调用） */
   postProcess?: (javaCode: string, context: TransformContext) => string;
   
-  /** 生成额外代码 */
+  /** 生成额外代码钩子（返回 null 表示不生成） */
   generateAdditional?: (cls: ParsedClass, context: TransformContext) => string | null;
 }
 ```
 
 ### TransformContext
 
-转换上下文。
+传递给所有插件钩子的上下文对象。
 
 ```typescript
 interface TransformContext {
   /** 源文件路径 */
   sourceFile: string;
-  
-  /** 当前类名 */
+  /** 当前正在处理的类名 */
   className: string;
-  
-  /** 类类型 */
-  classType: 'entity' | 'repository' | 'service' | 'controller' | 'dto' | 'redis' | 'mq' | 'security' | 'admin' | 'unknown';
-  
+  /** 根据装饰器推断的类类型 */
+  classType: 'entity' | 'repository' | 'service' | 'controller' | 'dto'
+           | 'redis' | 'mq' | 'security' | 'admin' | 'unknown';
   /** 转换器选项 */
   options: TranspilerOptions;
-  
   /** 当前文件中的所有解析类 */
   allClasses: ParsedClass[];
 }
@@ -544,41 +551,75 @@ interface TransformContext {
 
 ### PluginRegistry
 
-插件注册表。
+插件注册表，管理多个插件的注册与协调调用。
 
 ```typescript
 class PluginRegistry {
-  /** 注册插件 */
+  /** 注册单个插件（同名插件自动忽略） */
   register(plugin: TranspilePlugin): void;
   
-  /** 注册多个插件 */
+  /** 批量注册插件 */
   registerAll(plugins: TranspilePlugin[]): void;
   
-  /** 获取所有插件 */
+  /** 获取所有已注册插件（按优先级降序排列） */
   getPlugins(): TranspilePlugin[];
   
-  /** 应用装饰器转换 */
+  /** 依次调用所有插件的 transformDecorator 钩子 */
   applyDecoratorTransform(decorator: ParsedDecorator, context: TransformContext): ParsedDecorator;
   
-  /** 应用类型转换 */
+  /** 依次调用所有插件的 transformType 钩子 */
   applyTypeTransform(tsType: string, context: TransformContext): string;
   
-  /** 应用方法转换 */
+  /** 依次调用所有插件的 transformMethod 钩子 */
   applyMethodTransform(method: ParsedMethod, context: TransformContext): ParsedMethod;
   
-  /** 应用类转换 */
+  /** 依次调用所有插件的 transformClass 钩子 */
   applyClassTransform(cls: ParsedClass, context: TransformContext): ParsedClass;
   
-  /** 应用后处理 */
+  /** 依次调用所有插件的 postProcess 钩子 */
   applyPostProcess(javaCode: string, context: TransformContext): string;
 }
 ```
+
+### defaultPluginRegistry
+
+全局默认插件注册表实例（不含内置插件，按需使用）。
+
+```typescript
+const defaultPluginRegistry: PluginRegistry;
+```
+
+### getBuiltinPlugins
+
+获取所有内置插件的函数。
+
+**签名：**
+
+```typescript
+function getBuiltinPlugins(): TranspilePlugin[]
+```
+
+**返回：** 包含全部内置插件的数组（entity、mapper、validation、date、service、controller、querywrapper 及各组件插件）。
+
+### getPluginsByName
+
+按名称获取内置插件子集。
+
+**签名：**
+
+```typescript
+function getPluginsByName(names: string[]): TranspilePlugin[]
+```
+
+**可用名称：** `'entity-plugin'`、`'mapper-plugin'`、`'validation-plugin'`、`'date-plugin'`、`'service-plugin'`、`'controller-plugin'`、`'querywrapper-plugin'`
+
+---
 
 ## 缓存 API
 
 ### calculateHash
 
-计算文件内容的 SHA-256 哈希值。
+计算字符串内容的 SHA-256 哈希值。
 
 **签名：**
 
@@ -586,49 +627,29 @@ class PluginRegistry {
 function calculateHash(content: string): string
 ```
 
-**参数：**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|--------|--------|------|
-| `content` | `string` | 是 | 文件内容 |
-
-**返回值：**
-
-返回 SHA-256 哈希字符串。
-
 ### loadCache
 
-从磁盘加载缓存。
+从磁盘加载缓存文件（`.codegen-cache.json`）。
 
 **签名：**
 
 ```typescript
-function loadCache(): CacheData
+function loadCache(): Record<string, { hash: string; timestamp: number }>
 ```
-
-**返回值：**
-
-返回缓存数据对象。
 
 ### saveCache
 
-保存缓存到磁盘。
+将缓存数据写入磁盘。
 
 **签名：**
 
 ```typescript
-function saveCache(cache: CacheData): void
+function saveCache(cache: Record<string, { hash: string; timestamp: number }>): void
 ```
-
-**参数：**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|--------|--------|------|
-| `cache` | `CacheData` | 是 | 缓存数据 |
 
 ### hasFileChanged
 
-检查文件自上次生成后是否已更改。
+检查文件内容自上次生成以来是否已变更。
 
 **签名：**
 
@@ -636,20 +657,11 @@ function saveCache(cache: CacheData): void
 function hasFileChanged(filePath: string, content: string): boolean
 ```
 
-**参数：**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|--------|--------|------|
-| `filePath` | `string` | 是 | 文件路径 |
-| `content` | `string` | 是 | 文件内容 |
-
-**返回值：**
-
-如果文件已更改返回 `true`，否则返回 `false`。
+**返回：** 文件已变更返回 `true`，否则返回 `false`。
 
 ### updateCacheEntry
 
-更新文件的缓存条目。
+更新指定文件的缓存条目。
 
 **签名：**
 
@@ -657,16 +669,9 @@ function hasFileChanged(filePath: string, content: string): boolean
 function updateCacheEntry(filePath: string, content: string): void
 ```
 
-**参数：**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|--------|--------|------|
-| `filePath` | `string` | 是 | 文件路径 |
-| `content` | `string` | 是 | 文件内容 |
-
 ### removeCacheEntry
 
-删除文件的缓存条目。
+删除指定文件的缓存条目。
 
 **签名：**
 
@@ -674,15 +679,9 @@ function updateCacheEntry(filePath: string, content: string): void
 function removeCacheEntry(filePath: string): void
 ```
 
-**参数：**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|--------|--------|------|
-| `filePath` | `string` | 是 | 文件路径 |
-
 ### clearCache
 
-清除所有缓存条目。
+清除全部缓存（删除 `.codegen-cache.json` 文件）。
 
 **签名：**
 
@@ -700,13 +699,11 @@ function clearCache(): void
 function getCacheStats(): { total: number; stale: number }
 ```
 
-**返回值：**
-
-返回包含缓存统计信息的对象。
+**返回：** `total` 为缓存总条目数，`stale` 为超过 7 天的过期条目数。
 
 ### cleanupStaleCache
 
-清理过期的缓存条目。
+清理超过 7 天的过期缓存条目。
 
 **签名：**
 
@@ -714,173 +711,180 @@ function getCacheStats(): { total: number; stale: number }
 function cleanupStaleCache(): void
 ```
 
-## CLI API
+---
 
-### transpileCommand
+## 构建工具 API
 
-转换命令处理器。
+### decoratorGenericPlugin
+
+创建 esbuild/tsup 插件，在构建时自动将 `@Mapper()` + `extends BaseMapper<User>` 转换为 `@Mapper(User)`。
 
 **签名：**
 
 ```typescript
-async function transpileCommand(source: string, options: TranspileOptions): Promise<void>
+function decoratorGenericPlugin(): EsbuildPlugin
+```
+
+**示例（`tsup.config.ts`）：**
+
+```typescript
+import { defineConfig } from 'tsup';
+import { decoratorGenericPlugin } from '@ai-partner-x/aiko-boot-codegen';
+
+export default defineConfig({
+  esbuildPlugins: [decoratorGenericPlugin()],
+});
+```
+
+### createDecoratorGenericTransformer
+
+创建 TypeScript 编译器 Transformer，实现装饰器泛型参数自动填充。
+
+**签名：**
+
+```typescript
+function createDecoratorGenericTransformer(): ts.TransformerFactory<ts.SourceFile>
+```
+
+**示例：**
+
+```typescript
+import * as ts from 'typescript';
+import { createDecoratorGenericTransformer } from '@ai-partner-x/aiko-boot-codegen';
+
+const result = ts.transform(sourceFile, [createDecoratorGenericTransformer()]);
+```
+
+### transformSourceCode
+
+在内存中对 TypeScript 源代码执行装饰器泛型参数填充，返回转换后的代码字符串。
+
+**签名：**
+
+```typescript
+function transformSourceCode(sourceCode: string, fileName?: string): string
 ```
 
 **参数：**
 
 | 参数 | 类型 | 必填 | 说明 |
-|------|--------|--------|------|
-| `source` | `string` | 是 | 源目录或文件 |
-| `options` | `TranspileOptions` | 是 | 转换选项 |
+|------|------|------|------|
+| `sourceCode` | `string` | 是 | TypeScript 源代码字符串 |
+| `fileName` | `string` | 否 | 文件名（影响错误信息），默认 `'input.ts'` |
 
 **示例：**
 
 ```typescript
-import { transpileCommand } from '@ai-partner-x/aiko-boot-codegen/cli';
+import { transformSourceCode } from '@ai-partner-x/aiko-boot-codegen';
 
-await transpileCommand('./src', {
-  out: './gen',
-  package: 'com.example',
-  lombok: false,
-  javaVersion: '17',
-  springBoot: '3.2.0',
-  dryRun: false,
-  verbose: true,
-  incremental: true,
-});
+const output = transformSourceCode(`
+  @Mapper()
+  export class UserMapper extends BaseMapper<User> {}
+`);
+// output: '@Mapper(User)\nexport class UserMapper extends BaseMapper<User> {}\n'
 ```
+
+---
 
 ## 常量
 
 ### TYPE_MAPPING
 
-TypeScript 到 Java 类型映射。
+TypeScript 到 Java 类型映射表。
 
 ```typescript
 const TYPE_MAPPING: Record<string, string> = {
-  'number': 'Integer',
-  'string': 'String',
-  'boolean': 'Boolean',
-  'Date': 'LocalDateTime',
-  'any': 'Object',
-  'void': 'void',
-  'null': 'null',
+  'number':    'Integer',
+  'string':    'String',
+  'boolean':   'Boolean',
+  'Date':      'LocalDateTime',
+  'any':       'Object',
+  'void':      'void',
+  'null':      'null',
   'undefined': 'null',
 };
 ```
 
 ### ID_TYPE_MAPPING
 
-ID 类型映射。
+ID 字段类型映射（按组件场景区分）。
 
 ```typescript
 const ID_TYPE_MAPPING: Record<string, string> = {
-  default: 'Long',
-  redis: 'String',
-  age: 'Integer',
+  default: 'Long',   // 数据库主键
+  redis:   'String', // Redis 实体 ID
 };
 ```
 
 ### DECORATOR_MAPPING
 
-TypeScript 装饰器到 Java 注解映射。
+TypeScript 装饰器到 Java 注解名的映射表（不含 `@` 前缀）。
 
 ```typescript
 const DECORATOR_MAPPING: Record<string, string> = {
-  'Entity': '@TableName',
-  'Repository': '@Repository',
-  'Service': '@Service',
-  'RestController': '@RestController',
-  // ... 更多映射
+  'Entity':          '@TableName',
+  'Repository':      '@Repository',
+  'Service':         '@Service',
+  'RestController':  '@RestController',
+  'RedisHash':       '@RedisHash',
+  'MqListener':      '@StreamListener',
+  'PreAuthorize':    '@PreAuthorize',
+  // ... 更多映射见 types.ts
 };
 ```
 
 ### IMPORT_MAPPING
 
-TypeScript 模块到 Java 导入映射。
+TypeScript 模块/具名导入到 Java import 语句的映射。
 
 ```typescript
 const IMPORT_MAPPING: Record<string, string[]> = {
   '@ai-partner-x/aiko-boot': [
     'org.springframework.stereotype.Service',
     'org.springframework.web.bind.annotation.RestController',
-    // ... 更多导入
+    'org.springframework.beans.factory.annotation.Autowired',
+    'org.springframework.transaction.annotation.Transactional',
   ],
-  // ... 更多模块映射
+  '@ai-partner-x/aiko-boot-starter-orm': [
+    'com.baomidou.mybatisplus.core.conditions.query.QueryWrapper',
+    'com.baomidou.mybatisplus.core.mapper.BaseMapper',
+    'com.baomidou.mybatisplus.annotation.*',
+    // ...
+  ],
+  // ... 更多映射见 types.ts
 };
 ```
 
-## 错误处理
+---
 
-代码生成器提供完善的错误处理：
+## 错误处理
 
 ### 错误类型
 
-- `parse` - 语法解析错误
-- `type` - 类型错误
-- `other` - 其他错误
+| 类型 | 说明 |
+|------|------|
+| `parse` | TypeScript 语法解析错误 |
+| `type` | 类型推断或映射错误 |
+| `other` | 其他运行时错误 |
 
-### 错误报告
+### 错误报告文件格式
 
-错误信息会输出到 `codegen-errors.json`：
+CLI 运行后如有错误，会在当前目录生成 `codegen-errors.json`：
 
 ```json
 [
   {
-    "file": "path/to/file.ts",
-    "error": "Error message",
+    "file": "src/entity/user.entity.ts",
+    "error": "Unexpected token",
     "type": "parse"
   }
 ]
 ```
 
-## 示例
-
-### 完整示例
-
-```typescript
-import { transpile } from '@ai-partner-x/aiko-boot-codegen';
-
-const sourceCode = `
-  import { Entity, TableId, TableField } from '@ai-partner-x/aiko-boot-starter-orm';
-  import { Service, Autowired, Transactional } from '@ai-partner-x/aiko-boot';
-
-  @Entity
-  class User {
-    @TableId
-    id: number;
-
-    @TableField('user_name')
-    name: string;
-
-    @TableField('user_email')
-    email: string;
-
-    createdAt: Date;
-  }
-
-  @Service
-  class UserService {
-    @Autowired
-    private userRepository: UserRepository;
-
-    @Transactional
-    getUser(id: number): User {
-      return this.userRepository.selectById(id);
-    }
-  }
-`;
-
-const result = transpile(sourceCode, {
-  packageName: 'com.example',
-});
-
-console.log(result.get('User.java'));
-console.log(result.get('UserService.java'));
-```
+---
 
 ## 更多信息
 
-- [README](./README.md) - 使用文档
-- [PLUGIN_DEVELOPMENT.md](./PLUGIN_DEVELOPMENT.md) - 插件开发指南
+- [README.md](./README.md) — 使用手册
+- [PLUGIN_DEVELOPMENT.md](./PLUGIN_DEVELOPMENT.md) — 二次开发手册
 - GitHub: https://github.com/ai-partner-x/ai-first-framework
