@@ -29,6 +29,23 @@ let mapTypedParams: Set<string> = new Set();
 let mapTypedParamFieldTypes: Map<string, Map<string, string>> = new Map();
 
 /**
+ * Names of class fields whose TypeScript type is a string literal union (e.g. `'done' | 'failed'`).
+ * These are mapped to Java enums, so string methods like toUpperCase() must be translated
+ * to their enum equivalents (e.g. `.name()`).
+ * Set once per class via setEnumFieldNames() before generating methods.
+ */
+let enumFieldNames: Set<string> = new Set();
+
+/**
+ * Set the names of enum-typed fields for the class currently being generated.
+ * Call this before generating method bodies so that toUpperCase()/toLowerCase()
+ * chains on those fields are correctly translated.
+ */
+export function setEnumFieldNames(names: Set<string>): void {
+  enumFieldNames = names;
+}
+
+/**
  * Parse a TypeScript inline object type string like `{ to: string; userId: number }`
  * into a Map of field name → TS type.
  *
@@ -609,6 +626,22 @@ function generateMethodCall(expr: ParsedMethodCall): string {
     // Special handling for Date methods
     if (expr.method === 'toISOString' && isDateExpression(expr.object)) {
       return 'LocalDateTime.now()';
+    }
+
+    // Translate .toUpperCase() / .toLowerCase() on enum field getters.
+    // When a TS string literal union field (e.g. status: 'done' | 'failed') is accessed
+    // on a parameter, the getter returns a Java enum — not a String — so String methods
+    // like toUpperCase() are invalid.  Use .name() instead (enum names are already uppercase).
+    if (
+      expr.object.type === 'propertyAccess' &&
+      enumFieldNames.has((expr.object as any).property)
+    ) {
+      if (expr.method === 'toUpperCase') {
+        return `${obj}.name()`;
+      }
+      if (expr.method === 'toLowerCase') {
+        return `${obj}.name().toLowerCase()`;
+      }
     }
     
     // Special handling for mapper methods that need null when no wrapper

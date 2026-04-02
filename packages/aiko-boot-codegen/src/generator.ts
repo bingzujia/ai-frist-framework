@@ -6,7 +6,7 @@ import { TYPE_MAPPING, IMPORT_MAPPING, ID_TYPE_MAPPING } from './types.js';
 import type { ParsedClass, ParsedMethod, TranspilerOptions, UtilityTypeUsage, EnumTypeUsage, ParsedComment, ParsedImport, ParsedInterface } from './types.js';
 import { PluginRegistry, type TransformContext } from './plugins.js';
 import { getBuiltinPlugins } from './builtin-plugins.js';
-import { generateMethodBody } from './method-body-generator.js';
+import { generateMethodBody, setEnumFieldNames } from './method-body-generator.js';
 
 /** Global utility type collector */
 const utilityTypeUsages: Map<string, UtilityTypeUsage> = new Map();
@@ -123,6 +123,19 @@ export function generateJavaClass(
   // Methods - skip for repository (BaseMapper provides methods)
   if (classType !== 'repository' && !transformedClass.decorators.some(d => d.name === 'RedisRepository' || d.name === 'RedisRepo')) {
     const addOverride = classType === 'service' && options.generateAsServiceImpl === true;
+    // Collect all string-literal-union field names across co-located classes so that
+    // the method body generator can translate .toUpperCase()/.toLowerCase() on enum getters.
+    const allClasses = options.allClasses ?? [parsedClass];
+    const enumFields = new Set<string>();
+    for (const cls of allClasses) {
+      for (const field of cls.fields) {
+        // A string literal union type contains '|' and quote characters.
+        if (field.type.includes('|') && (field.type.includes("'") || field.type.includes('"'))) {
+          enumFields.add(field.name);
+        }
+      }
+    }
+    setEnumFieldNames(enumFields);
     transformedClass.methods.forEach(method => {
       // Apply method-level plugin transformations
       const transformedMethod = pluginRegistry.applyMethodTransform(method, context);
