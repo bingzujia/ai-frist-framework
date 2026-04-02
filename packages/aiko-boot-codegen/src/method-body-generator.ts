@@ -10,7 +10,8 @@ import type {
   ParsedForStatement, ParsedExpressionStatement, ParsedBlockStatement,
   ParsedMethodCall, ParsedBinaryExpression, ParsedNewExpression,
   ParsedDestructuringDeclaration, ParsedThrowStatement,
-  ParsedConditionalExpression, ParsedElementAccessExpression
+  ParsedConditionalExpression, ParsedElementAccessExpression,
+  ParsedSpreadExpression
 } from './types.js';
 
 /**
@@ -413,9 +414,17 @@ function generateExpression(expr: ParsedExpression): string {
       return generateExpression(expr.expression);
     case 'object':
       return generateObjectLiteral(expr);
-    case 'array':
+    case 'array': {
+      // Detect spread-copy pattern: [...x] → new ArrayList<>(x)
+      if (expr.elements.length === 1 && expr.elements[0].type === 'spread') {
+        const spreadExpr = (expr.elements[0] as ParsedSpreadExpression).expression;
+        return `new ArrayList<>(${generateExpression(spreadExpr)})`;
+      }
       return `Arrays.asList(${expr.elements.map(generateExpression).join(', ')})`;
-    case 'conditional':
+    }
+    case 'spread':
+      // Standalone spread (e.g. inside non-copy array) — emit spread target
+      return generateExpression((expr as ParsedSpreadExpression).expression);    case 'conditional':
       return generateConditionalExpression(expr);
     case 'elementAccess':
       return generateElementAccessExpression(expr);
@@ -662,7 +671,12 @@ function generateBinaryExpression(expr: ParsedBinaryExpression): string {
       const obj = generateExpression(propAccess.object);
       const prop = propAccess.property;
       const value = generateExpression(expr.right);
-      
+
+      // Handle: collection.length = 0 → collection.clear()
+      if (prop === 'length' && expr.right.type === 'literal' && (expr.right as any).value === 0) {
+        return `${obj}.clear()`;
+      }
+
       // If assigning to 'this', it's internal field access
       if (propAccess.object.type === 'identifier' && propAccess.object.name === 'this') {
         return `this.${prop} = ${value}`;

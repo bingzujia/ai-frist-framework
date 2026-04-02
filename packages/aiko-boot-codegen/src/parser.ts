@@ -705,7 +705,12 @@ function parseExpression(node: ts.Expression, sourceFile: ts.SourceFile): Parsed
   if (ts.isArrayLiteralExpression(node)) {
     return {
       type: 'array',
-      elements: node.elements.map(el => parseExpression(el, sourceFile)),
+      elements: node.elements.map(el => {
+        if (ts.isSpreadElement(el)) {
+          return { type: 'spread' as const, expression: parseExpression(el.expression, sourceFile) };
+        }
+        return parseExpression(el, sourceFile);
+      }),
     };
   }
   

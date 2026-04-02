@@ -467,7 +467,7 @@ function collectImports(parsedClass: ParsedClass, imports: Set<string>, classTyp
  * Add entity and mapper imports for service
  */
 function addEntityMapperImports(parsedClass: ParsedClass, imports: Set<string>, options: TranspilerOptions): void {
-  const basePackage = options.packageName.replace(/\.(service|controller|mapper|entity|model)$/, '');
+  const basePackage = options.packageName.replace(/\.(service(\.impl)?|controller|mapper|entity|model)$/, '');
   
   // Infer entity names from constructor parameters or fields
   const constructorParams = parsedClass.constructor?.parameters || [];
@@ -480,6 +480,9 @@ function addEntityMapperImports(parsedClass: ParsedClass, imports: Set<string>, 
       imports.add(`${basePackage}.entity.${entityName}`);
       imports.add(`${basePackage}.mapper.${type}`);
     }
+    if (type.endsWith('Service')) {
+      imports.add(`${basePackage}.service.${type}`);
+    }
   });
   
   // Add QueryWrapper/UpdateWrapper if used in method bodies
@@ -491,7 +494,7 @@ function addEntityMapperImports(parsedClass: ParsedClass, imports: Set<string>, 
  * Add entity and service imports for controller
  */
 function addEntityServiceImports(parsedClass: ParsedClass, imports: Set<string>, options: TranspilerOptions): void {
-  const basePackage = options.packageName.replace(/\.(service|controller|mapper|entity|model)$/, '');
+  const basePackage = options.packageName.replace(/\.(service(\.impl)?|controller|mapper|entity|model)$/, '');
   
   const constructorParams = parsedClass.constructor?.parameters || [];
   const autowiredFields = parsedClass.fields.filter(f => f.decorators.some(d => d.name === 'Autowired'));
@@ -531,29 +534,47 @@ function checkBodyImports(body: any[], imports: Set<string>): void {
     imports.add('java.util.Map');
     imports.add('java.util.HashMap');
   }
+  if (bodyStr.includes('"type":"array"') && bodyStr.includes('"type":"spread"')) {
+    // [...x] spread-copy pattern → new ArrayList<>(x)
+    imports.add('java.util.ArrayList');
+  }
+  if (bodyStr.includes('Arrays.')) {
+    imports.add('java.util.Arrays');
+  }
 }
 
 /**
  * Add DTO imports from method parameters and return types
  */
 function addDtoImports(parsedClass: ParsedClass, imports: Set<string>, options: TranspilerOptions): void {
-  const basePackage = options.packageName.replace(/\.(service|controller|mapper|entity|model)$/, '');
+  const basePackage = options.packageName.replace(/\.(service(\.impl)?|controller|mapper|entity|model)$/, '');
   
   // Known DTO suffixes
   const dtoPatterns = ['Dto', 'DTO', 'Params', 'Request', 'Response', 'Vo', 'VO', 'Result'];
+
+  // Names of co-located classes declared in the same source file (e.g. TaskLogEntry)
+  const localClassNames = new Set<string>(
+    ((options as any).allClasses as ParsedClass[] | undefined ?? []).map((c: ParsedClass) => c.name)
+  );
   
   parsedClass.methods.forEach(method => {
     // Check method parameters
     method.parameters.forEach(param => {
       const typeName = param.type.replace(/[\[\]<>]/g, '');
-      if (dtoPatterns.some(suffix => typeName.endsWith(suffix))) {
+      if (
+        dtoPatterns.some(suffix => typeName.endsWith(suffix)) ||
+        (localClassNames.has(typeName) && typeName !== parsedClass.name)
+      ) {
         imports.add(`${basePackage}.model.${typeName}`);
       }
     });
     
     // Check return type
     const returnType = method.returnType.replace(/[\[\]<>]/g, '');
-    if (dtoPatterns.some(suffix => returnType.endsWith(suffix))) {
+    if (
+      dtoPatterns.some(suffix => returnType.endsWith(suffix)) ||
+      (localClassNames.has(returnType) && returnType !== parsedClass.name)
+    ) {
       imports.add(`${basePackage}.model.${returnType}`);
     }
   });

@@ -475,6 +475,7 @@ export type ParsedExpression =
   | ParsedAwaitExpression
   | ParsedObjectLiteral
   | ParsedArrayLiteral
+  | ParsedSpreadExpression
   | ParsedConditionalExpression
   | ParsedElementAccessExpression
   | ParsedRawExpression;
@@ -532,6 +533,11 @@ export interface ParsedObjectLiteral {
 export interface ParsedArrayLiteral {
   type: 'array';
   elements: ParsedExpression[];
+}
+
+export interface ParsedSpreadExpression {
+  type: 'spread';
+  expression: ParsedExpression;
 }
 
 export interface ParsedConditionalExpression {
