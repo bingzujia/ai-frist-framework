@@ -370,6 +370,10 @@ export interface ParsedField {
   type: string;
   decorators: ParsedDecorator[];
   optional: boolean;
+  /** Whether declared with `readonly` modifier */
+  isReadonly?: boolean;
+  /** Serialized initializer for simple literals (e.g. '[]', 'true', '0', '"str"') */
+  initializer?: string;
   /** Field-level comment */
   comment?: ParsedComment;
 }

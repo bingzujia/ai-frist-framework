@@ -161,6 +161,30 @@ function generateVariableDeclaration(stmt: ParsedVariableDeclaration, indent: st
   if ((javaType === 'Object' || javaType === 'any') && stmt.initializer) {
     javaType = inferTypeFromExpression(stmt.initializer);
   }
+
+  // Handle Object.assign(new T(), src) → two-statement pattern:
+  //   T varName = new T();
+  //   BeanUtils.copyProperties(src, varName);
+  if (
+    stmt.initializer &&
+    stmt.initializer.type === 'methodCall' &&
+    (stmt.initializer as any).object?.type === 'identifier' &&
+    (stmt.initializer as any).object?.name === 'Object' &&
+    (stmt.initializer as any).method === 'assign'
+  ) {
+    const callArgs: ParsedExpression[] = (stmt.initializer as any).arguments ?? [];
+    if (callArgs.length === 2 && callArgs[0].type === 'new') {
+      const newExpr = callArgs[0] as any;
+      const src = generateExpression(callArgs[1]);
+      const modifier = stmt.isConst ? 'final ' : '';
+      const ctorType = newExpr.className;
+      const effectiveType = javaType !== 'Object' && javaType !== 'var' ? javaType : ctorType;
+      return [
+        `${indent}${modifier}${effectiveType} ${stmt.name} = new ${ctorType}();`,
+        `${indent}BeanUtils.copyProperties(${src}, ${stmt.name});`,
+      ];
+    }
+  }
   
   // Handle object literal assignment to typed variable
   // e.g., const result: UserSearchResult = { data, total }

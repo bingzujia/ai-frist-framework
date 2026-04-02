@@ -322,12 +322,31 @@ function parseField(node: ts.PropertyDeclaration, sourceFile: ts.SourceFile): Pa
   const type = node.type ? node.type.getText(sourceFile) : 'any';
   const decorators = parseDecorators(node, sourceFile);
   const optional = !!node.questionToken;
-  
+  const isReadonly = !!node.modifiers?.some(m => m.kind === ts.SyntaxKind.ReadonlyKeyword);
+
+  // Capture simple initializers so downstream generators can emit Java equivalents.
+  let initializer: string | undefined;
+  if (node.initializer) {
+    if (ts.isArrayLiteralExpression(node.initializer) && node.initializer.elements.length === 0) {
+      initializer = '[]';
+    } else if (ts.isStringLiteral(node.initializer)) {
+      initializer = `"${node.initializer.text}"`;
+    } else if (ts.isNumericLiteral(node.initializer)) {
+      initializer = node.initializer.text;
+    } else if (node.initializer.kind === ts.SyntaxKind.TrueKeyword) {
+      initializer = 'true';
+    } else if (node.initializer.kind === ts.SyntaxKind.FalseKeyword) {
+      initializer = 'false';
+    } else if (node.initializer.kind === ts.SyntaxKind.NullKeyword) {
+      initializer = 'null';
+    }
+  }
+
   // Parse field-level comment
   const comments = parseLeadingComments(node, sourceFile);
   const comment = comments.find(c => c.type === 'jsdoc') || comments[0];
 
-  return { name, type, decorators, optional, comment };
+  return { name, type, decorators, optional, isReadonly, initializer, comment };
 }
 
 /**

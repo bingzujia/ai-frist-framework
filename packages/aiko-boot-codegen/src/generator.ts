@@ -345,6 +345,10 @@ function collectImports(parsedClass: ParsedClass, imports: Set<string>, classTyp
       imports.add('java.util.Objects');
       imports.add('java.util.Map');
       imports.add('java.util.HashMap');
+      // Add ArrayList import if any field has an array initializer
+      if (parsedClass.fields.some(f => f.initializer === '[]')) {
+        imports.add('java.util.ArrayList');
+      }
       // Add entity and mapper imports
       addEntityMapperImports(parsedClass, imports, options);
       // Add DTO imports from method parameters and return types
@@ -533,6 +537,10 @@ function checkBodyImports(body: any[], imports: Set<string>): void {
   if (bodyStr.includes('Map.of') || bodyStr.includes('HashMap')) {
     imports.add('java.util.Map');
     imports.add('java.util.HashMap');
+  }
+  if (bodyStr.includes('"method":"assign"') && bodyStr.includes('"name":"Object"')) {
+    // Object.assign(...) → BeanUtils.copyProperties(...)
+    imports.add('org.springframework.beans.BeanUtils');
   }
   if (bodyStr.includes('"type":"array"') && bodyStr.includes('"type":"spread"')) {
     // [...x] spread-copy pattern → new ArrayList<>(x)
@@ -855,6 +863,27 @@ function generateInjectedFields(parsedClass: ParsedClass, lines: string[]): void
       lines.push(`    private ${javaType} ${field.name};`);
       lines.push('');
     }
+  });
+
+  // 3. Non-autowired instance fields (e.g. private readonly logs: TaskLogEntry[] = [])
+  //    These are regular state fields that need to be declared in the Java class too.
+  parsedClass.fields.forEach(field => {
+    const isAutowired = field.decorators.some(d => d.name === 'Autowired');
+    if (isAutowired) return; // already handled above
+
+    const javaType = mapType(field.type);
+
+    // Derive a Java initializer expression from the captured TS initializer.
+    let javaInit = '';
+    if (field.initializer === '[]') {
+      // TaskLogEntry[] → List<TaskLogEntry>, initial value → new ArrayList<>()
+      javaInit = ' = new ArrayList<>()';
+    } else if (field.initializer !== undefined) {
+      javaInit = ` = ${field.initializer}`;
+    }
+
+    lines.push(`    private ${javaType} ${field.name}${javaInit};`);
+    lines.push('');
   });
 }
 
