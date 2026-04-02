@@ -160,7 +160,14 @@ export function generateJavaServiceInterface(
   const basePackage = options.packageName.replace(/\.(service(\.impl)?|impl)$/, '');
   imports.add('java.util.List');
   imports.add('java.util.Map');
-  imports.add(`${basePackage}.entity.*`);
+  // Only import entity.* if there are @Entity/@TableName-decorated classes in the project;
+  // otherwise plain classes land in model.* and the entity package may not exist at all.
+  const hasEntityClasses = (options.allClasses ?? []).some(c =>
+    c.decorators.some(d => d.name === 'Entity' || d.name === 'TableName')
+  );
+  if (hasEntityClasses) {
+    imports.add(`${basePackage}.entity.*`);
+  }
   imports.add(`${basePackage}.model.*`);
 
   // Package declaration

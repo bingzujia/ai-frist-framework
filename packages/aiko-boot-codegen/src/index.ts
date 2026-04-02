@@ -53,7 +53,10 @@ export function transpile(
     const isService = cls.decorators.some(d => d.name === 'Service');
     if (isService) {
       // Service interface (e.g. UserService.java)
-      const interfaceCode = generateJavaServiceInterface(cls, options);
+      const interfaceCode = generateJavaServiceInterface(cls, {
+        ...options,
+        allClasses: parsedFile.classes,
+      });
       result.set(`${cls.name}.java`, interfaceCode);
       // Service implementation (e.g. UserServiceImpl.java)
       const implCode = generateJavaClass(cls, {
