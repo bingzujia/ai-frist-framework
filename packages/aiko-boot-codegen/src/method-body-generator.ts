@@ -412,12 +412,44 @@ function generateForStatement(stmt: ParsedForStatement, indent: string): string[
  * Generate expression statement
  */
 function generateExpressionStatement(stmt: ParsedExpressionStatement, indent: string): string[] {
+  // Detect sleep(ms) or await sleep(ms) → Thread.sleep(ms) with InterruptedException handling.
+  // TypeScript's sleep() helper (built on setTimeout) has no Java equivalent as a bare call;
+  // the correct Java form is Thread.sleep() wrapped in try/catch.
+  const sleepCall = extractSleepCall(stmt.expression);
+  if (sleepCall !== null) {
+    const ms = sleepCall;
+    return [
+      `${indent}try { Thread.sleep(${ms}); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }`,
+    ];
+  }
+
   const expression = generateExpression(stmt.expression);
   // Skip empty expressions (e.g., from removed method calls like wrapper.page())
   if (!expression || expression.trim() === '') {
     return [];
   }
   return [`${indent}${expression};`];
+}
+
+/**
+ * If the expression is a bare `sleep(ms)` call (or `await sleep(ms)`), return the
+ * generated argument string; otherwise return null.
+ */
+function extractSleepCall(expr: ParsedExpression): string | null {
+  let inner = expr;
+  // Unwrap await
+  if (inner.type === 'await') {
+    inner = (inner as any).expression;
+  }
+  if (
+    inner.type === 'methodCall' &&
+    (inner as any).method === 'sleep' &&
+    !(inner as any).object
+  ) {
+    const callArgs: ParsedExpression[] = (inner as any).arguments ?? [];
+    return callArgs.map(generateExpression).join(', ');
+  }
+  return null;
 }
 
 /**
